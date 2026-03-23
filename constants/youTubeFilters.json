@@ -1,0 +1,27 @@
+{
+  "youtube_api_config": {
+    "query_logic": {
+      "template": "{genre_name} \"Provided to YouTube\" -live -concert -performance",
+      "example_jazz": "jazz \"Provided to YouTube\" -live -concert -performance",
+      "example_rock": "rock \"Provided to YouTube\" -live -concert -performance",
+      "explanation": "Combining the genre with 'Provided to YouTube' forces the API to find official label-distributed studio tracks (Art Tracks) and ignore user-uploaded live clips."
+    },
+    "parameters": {
+      "part": "snippet",
+      "type": "video",
+      "videoCategoryId": "10",
+      "videoDefinition": "high",
+      "videoDuration": "short",
+      "maxResults": 50,
+      "order": "relevance"
+    },
+    "genres": [
+      { "name": "Jazz", "topicId": "/m/03_d0" },
+      { "name": "Rock", "topicId": "/m/06by7" },
+      { "name": "Pop", "topicId": "/m/064t9" },
+      { "name": "Hip Hop", "topicId": "/m/0glt67" },
+      { "name": "Classical", "topicId": "/m/01mc8" },
+      { "name": "Electronic", "topicId": "/m/02lkt" }
+    ]
+  }
+}

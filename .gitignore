@@ -41,3 +41,15 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Python BPM tool
+bpm_tool/venv/
+bpm_tool/__pycache__/
+bpm_tool/*.wav
+bpm_tool/*.mp3
+bpm_tool/*.webm
+bpm_tool/*.ogg
+bpm_tool/*.opus
+bpm_tool/*.m4a
+bpm_tool/results.csv
+bpm_tool/results.csv
