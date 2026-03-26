@@ -87,6 +87,7 @@ def download_audio(video_id: str, output_dir: str) -> str:
         "--quiet",
         "--no-warnings",
         "--ffmpeg-location", _FFMPEG_PATH,
+        "--format", "bestaudio/best",
         "-x",
         "--audio-format", AUDIO_FORMAT,
         "--audio-quality", "0",
