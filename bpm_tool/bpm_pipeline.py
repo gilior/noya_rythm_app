@@ -76,24 +76,26 @@ def _r2_client():
 
 # ── Step 1: Download ──────────────────────────────────────────────────────────
 
+_COOKIES_FILE = Path(__file__).parent / "cookies.txt"
+
+
 def download_audio(video_id: str, output_dir: str) -> str:
     """Download best audio stream and convert to mp3. Returns the file path."""
     output_template = os.path.join(output_dir, f"{video_id}.%(ext)s")
-    subprocess.run(
-        [
-            sys.executable, "-m", "yt_dlp",
-            "--quiet",
-            "--no-warnings",
-            "--ffmpeg-location", _FFMPEG_PATH,
-            "-x",
-            "--audio-format", AUDIO_FORMAT,
-            "--audio-quality", "0",
-            "-o", output_template,
-            f"https://www.youtube.com/watch?v={video_id}",
-        ],
-        check=True,
-        timeout=120,
-    )
+    cmd = [
+        sys.executable, "-m", "yt_dlp",
+        "--quiet",
+        "--no-warnings",
+        "--ffmpeg-location", _FFMPEG_PATH,
+        "-x",
+        "--audio-format", AUDIO_FORMAT,
+        "--audio-quality", "0",
+        "-o", output_template,
+    ]
+    if _COOKIES_FILE.exists():
+        cmd += ["--cookies", str(_COOKIES_FILE)]
+    cmd.append(f"https://www.youtube.com/watch?v={video_id}")
+    subprocess.run(cmd, check=True, timeout=120)
     return os.path.join(output_dir, f"{video_id}.{AUDIO_FORMAT}")
 
 

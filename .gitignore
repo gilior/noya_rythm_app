@@ -34,6 +34,7 @@ yarn-error.*
 .env
 .env*.local
 bpm_tool/.env
+bpm_tool/cookies.txt
 
 # typescript
 *.tsbuildinfo
