@@ -1,3 +1,5 @@
 yt-dlp
-librosa
+essentia
 imageio-ffmpeg
+boto3
+python-dotenv

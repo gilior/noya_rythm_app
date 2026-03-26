@@ -17,16 +17,16 @@
  * cache the result locally with expo-file-system.
  */
 
-import { Audio } from 'expo-av';
+import { Audio } from "expo-av";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type SessionPhase =
-  | 'idle'
-  | 'syncing'
-  | 'playing'
-  | 'slowing'
-  | 'completed';
+  | "idle"
+  | "syncing"
+  | "playing"
+  | "slowing"
+  | "completed";
 
 export interface SessionState {
   phase: SessionPhase;
@@ -80,14 +80,14 @@ class MusicService {
   async startSession(initialBPM: number): Promise<void> {
     this.setState({
       ...this.defaultState(),
-      phase: 'syncing',
+      phase: "syncing",
       currentBPM: initialBPM,
       musicBPM: initialBPM,
       peakBPM: initialBPM,
       startBPM: initialBPM,
       startTime: Date.now(),
       nextMilestoneAt: initialBPM * (1 - MILESTONE_DROP_RATIO),
-      message: 'Syncing music to your heartbeat…',
+      message: "Syncing music to your heartbeat…",
     });
 
     await this.loadLoop(initialBPM);
@@ -97,9 +97,9 @@ class MusicService {
 
     this.setState({
       ...this.state,
-      phase: 'playing',
+      phase: "playing",
       isPlaying: true,
-      message: 'Your heart and music are now in sync',
+      message: "Your heart and music are now in sync",
     });
 
     this.startAdaptLoop();
@@ -110,7 +110,7 @@ class MusicService {
    * Decides whether to adjust tempo (minor change) or load a new loop (major).
    */
   updateBPM(newBPM: number): void {
-    if (this.state.phase === 'idle' || this.state.phase === 'completed') return;
+    if (this.state.phase === "idle" || this.state.phase === "completed") return;
 
     const relativeChange =
       Math.abs(newBPM - this.state.currentBPM) / this.state.currentBPM;
@@ -121,7 +121,7 @@ class MusicService {
     if (relativeChange >= MINOR_CHANGE_THRESHOLD) {
       // Major change: select/generate a new loop at the new BPM range
       newMusicBPM = Math.round(newBPM * SLOW_TARGET_RATIO);
-      message = 'Adapting music to your new rhythm…';
+      message = "Adapting music to your new rhythm…";
       this.loadLoop(newMusicBPM); // fire-and-forget
     } else {
       // Minor change: small tempo adjustment
@@ -143,7 +143,7 @@ class MusicService {
 
     this.setState({
       ...this.state,
-      phase: 'slowing',
+      phase: "slowing",
       currentBPM: newBPM,
       musicBPM: Math.max(50, newMusicBPM),
       peakBPM,
@@ -158,8 +158,8 @@ class MusicService {
     return (
       this.state.currentBPM > 0 &&
       this.state.currentBPM <= normalBPM &&
-      this.state.phase !== 'completed' &&
-      this.state.phase !== 'idle'
+      this.state.phase !== "completed" &&
+      this.state.phase !== "idle"
     );
   }
 
@@ -167,9 +167,9 @@ class MusicService {
     this.stopAdaptLoop();
     this.setState({
       ...this.state,
-      phase: 'completed',
+      phase: "completed",
       isPlaying: false,
-      message: 'Well done! Your heart rate is back to normal 🎉',
+      message: "Well done! Your heart rate is back to normal 🎉",
     });
   }
 
@@ -177,10 +177,10 @@ class MusicService {
     // Switch to calming mode (≤ 80 BPM)
     this.setState({
       ...this.state,
-      phase: 'slowing',
+      phase: "slowing",
       musicBPM: 75,
       isPlaying: true,
-      message: 'Enjoy some calming music…',
+      message: "Enjoy some calming music…",
     });
     this.loadLoop(75);
   }
@@ -215,9 +215,9 @@ class MusicService {
   }
 
   skipLoop(): void {
-    if (this.state.phase === 'idle' || this.state.phase === 'completed') return;
+    if (this.state.phase === "idle" || this.state.phase === "completed") return;
     const msg = this.state.message;
-    this.setState({ ...this.state, message: 'Loading next track…' });
+    this.setState({ ...this.state, message: "Loading next track…" });
     // Reload the loop at current music BPM
     this.loadLoop(this.state.musicBPM).then(() => {
       this.setState({ ...this.state, message: msg });
@@ -238,7 +238,7 @@ class MusicService {
 
   private defaultState(): SessionState {
     return {
-      phase: 'idle',
+      phase: "idle",
       currentBPM: 0,
       musicBPM: 0,
       peakBPM: 0,
@@ -247,7 +247,7 @@ class MusicService {
       nextMilestoneAt: 0,
       startTime: 0,
       isPlaying: false,
-      message: '',
+      message: "",
     };
   }
 
@@ -259,7 +259,7 @@ class MusicService {
   private startAdaptLoop(): void {
     this.stopAdaptLoop();
     this.adaptIntervalId = setInterval(() => {
-      if (this.state.phase === 'playing' || this.state.phase === 'slowing') {
+      if (this.state.phase === "playing" || this.state.phase === "slowing") {
         const target = Math.round(this.state.currentBPM * SLOW_TARGET_RATIO);
         if (this.state.musicBPM > target) {
           const nudged = Math.max(target, this.state.musicBPM - 2);
@@ -277,32 +277,75 @@ class MusicService {
     }
   }
 
-  /**
-   * Loads the loop closest to `bpm` from LOOP_LIBRARY.
-   * Falls back to a calming ≤ 80 BPM loop if nothing matches.
-   *
-   * --- AI generation hook ---
-   * If no local loop exists for the BPM range, call your AI music API here,
-   * save the result with expo-file-system, then load the cached file.
-   */
+  private getNearestSongIdForBPM(bpm: number): string {
+    return "Km7B76mRIVw";
+  }
   private async loadLoop(bpm: number): Promise<void> {
     await this.stopAudio();
 
-    const nearest = findNearestBPM(bpm, Object.keys(LOOP_LIBRARY).map(Number));
-    if (nearest == null) {
-      // No audio files yet – session continues without sound
+    // 1. Instead of looping through a static LOOP_LIBRARY,
+    // find a matching YouTube ID from your loaded JSON playlists.
+    const youtubeId = this.getNearestSongIdForBPM(bpm);
+
+    if (!youtubeId) {
+      console.warn("No matching song found for BPM:", bpm);
       return;
     }
 
     try {
       await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+
+      // Tell UI we are loading
+      this.setState({ ...this.state, message: "Fetching high-quality audio…" });
+
+      // 2. Fetch the audio stream URL from a RapidAPI endpoint
+      // TODO: Register on RapidAPI for a YouTube to MP3/Audio API (like youtube-mp36)
+      // and place your API Key and Host here.
+      const rapidApiKey = "YOUR_RAPIDAPI_KEY_HERE";
+      const rapidApiHost = "youtube-mp36.p.rapidapi.com";
+      const url = `https://${rapidApiHost}/dl?id=${youtubeId}`;
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "x-rapidapi-key": rapidApiKey,
+          "x-rapidapi-host": rapidApiHost,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`API returned status ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // The exact property name depends on the specific RapidAPI endpoint you choose.
+      // Many return the direct stream link as `data.link` or `data.url`.
+      const directAudioStreamUrl = data.link || data.url;
+
+      if (!directAudioStreamUrl) {
+        throw new Error("No download link found in API response");
+      }
+
+      // 3. Mount it to expo-av (treats it exactly like a local file!)
       const { sound } = await Audio.Sound.createAsync(
-        LOOP_LIBRARY[nearest],
+        { uri: directAudioStreamUrl },
         { isLooping: true, shouldPlay: this.state.isPlaying },
       );
       this.sound = sound;
+
+      // Ensure the UI knows we are back in sync
+      if (this.state.phase === "syncing") {
+        this.setState({
+          ...this.state,
+          message: "Your heart and music are now in sync",
+        });
+      }
     } catch (e) {
-      console.warn('MusicService: failed to load loop', e);
+      console.warn(
+        "MusicService: failed to load YouTube stream via RapidAPI",
+        e,
+      );
     }
   }
 
