@@ -1,13 +1,14 @@
-import altRockSongs from "../assets/songs/lib/alt-rock.json";
-import ambientSongs from "../assets/songs/lib/ambient.json";
-import classicalSongs from "../assets/songs/lib/classical.json";
-import downtempoSongs from "../assets/songs/lib/downtempo.json";
-import jazzSongs from "../assets/songs/lib/jazz.json";
-import lofiSongs from "../assets/songs/lib/lofi.json";
-import meditationSongs from "../assets/songs/lib/meditation.json";
-import natureSongs from "../assets/songs/lib/nature.json";
-import pianoSongs from "../assets/songs/lib/piano.json";
-import rockSongs from "../assets/songs/lib/rock.json";
+import altRockSongs from "../assets/songs/lib_smaple/alt-rock.json";
+// import altRockSongs from "../assets/songs/lib/alt-rock.json";
+// import ambientSongs from "../assets/songs/lib/ambient.json";
+// import classicalSongs from "../assets/songs/lib/classical.json";
+// import downtempoSongs from "../assets/songs/lib/downtempo.json";
+// import jazzSongs from "../assets/songs/lib/jazz.json";
+// import lofiSongs from "../assets/songs/lib/lofi.json";
+// import meditationSongs from "../assets/songs/lib/meditation.json";
+// import natureSongs from "../assets/songs/lib/nature.json";
+// import pianoSongs from "../assets/songs/lib/piano.json";
+// import rockSongs from "../assets/songs/lib/rock.json";
 
 type RawSong = {
   id?: string;
@@ -27,26 +28,33 @@ export interface CatalogSong {
 }
 
 export interface CatalogFilter {
+  /** Restrict results to a single genre (e.g. `"lofi"`, `"ambient"`). When omitted, all genres are searched. */
   genre?: string;
+  /** The desired BPM to match. Combined with `bpmTolerance` to form a search window of `[targetBpm - tolerance, targetBpm + tolerance]`. Ignored when both `minBpm` and `maxBpm` are provided. */
   targetBpm?: number;
+  /** Half-width of the BPM search window around `targetBpm`. Defaults to `5`, so a `targetBpm` of 100 matches songs from 95–105 BPM. */
   bpmTolerance?: number;
+  /** Explicit lower bound for BPM filtering. Overrides the `targetBpm - bpmTolerance` calculation when provided. */
   minBpm?: number;
+  /** Explicit upper bound for BPM filtering. Overrides the `targetBpm + bpmTolerance` calculation when provided. */
   maxBpm?: number;
+  /** Song IDs to exclude from the results (e.g. to avoid replaying recently heard tracks). */
   excludeIds?: Iterable<string>;
+  /** Maximum number of songs to return. When omitted, all matching songs are returned. */
   limit?: number;
 }
 
 const RAW_LIBRARY: Record<string, RawSong[]> = {
   "alt-rock": altRockSongs,
-  ambient: ambientSongs,
-  classical: classicalSongs,
-  downtempo: downtempoSongs,
-  jazz: jazzSongs,
-  lofi: lofiSongs,
-  meditation: meditationSongs,
-  nature: natureSongs,
-  piano: pianoSongs,
-  rock: rockSongs,
+  // ambient: ambientSongs,
+  // classical: classicalSongs,
+  // downtempo: downtempoSongs,
+  // jazz: jazzSongs,
+  // lofi: lofiSongs,
+  // meditation: meditationSongs,
+  // nature: natureSongs,
+  // piano: pianoSongs,
+  // rock: rockSongs,
 };
 
 function normalizeBpm(value: RawSong["BPM"]): number | null {
@@ -81,7 +89,10 @@ function hasBpm(song: CatalogSong): song is CatalogSong & { bpm: number } {
   return song.bpm !== null;
 }
 
-function lowerBound(songs: ReadonlyArray<CatalogSong & { bpm: number }>, bpm: number): number {
+function lowerBound(
+  songs: readonly (CatalogSong & { bpm: number })[],
+  bpm: number,
+): number {
   let low = 0;
   let high = songs.length;
 
@@ -117,7 +128,7 @@ function createCatalog() {
 
   const songsByGenreSortedByBpm = new Map<
     string,
-    Array<CatalogSong & { bpm: number }>
+    (CatalogSong & { bpm: number })[]
   >();
 
   for (const [genre, songs] of songsByGenre.entries()) {
@@ -127,7 +138,9 @@ function createCatalog() {
     );
   }
 
-  const allSongsSortedByBpm = allSongs.filter(hasBpm).sort((a, b) => a.bpm - b.bpm);
+  const allSongsSortedByBpm = allSongs
+    .filter(hasBpm)
+    .sort((a, b) => a.bpm - b.bpm);
 
   return {
     allSongs,
@@ -139,7 +152,7 @@ function createCatalog() {
 }
 
 function sliceByBpm(
-  songs: ReadonlyArray<CatalogSong & { bpm: number }>,
+  songs: readonly (CatalogSong & { bpm: number })[],
   minBpm: number,
   maxBpm: number,
 ) {
@@ -149,7 +162,7 @@ function sliceByBpm(
 }
 
 function applyExcludeAndLimit(
-  songs: ReadonlyArray<CatalogSong>,
+  songs: readonly CatalogSong[],
   excludeIds?: Iterable<string>,
   limit?: number,
 ) {
@@ -205,18 +218,28 @@ class SongCatalogService {
       limit,
     } = filter;
 
-    const bpmMin = minBpm ?? (targetBpm !== undefined ? targetBpm - bpmTolerance : undefined);
-    const bpmMax = maxBpm ?? (targetBpm !== undefined ? targetBpm + bpmTolerance : undefined);
+    const bpmMin =
+      minBpm ??
+      (targetBpm !== undefined ? targetBpm - bpmTolerance : undefined);
+    const bpmMax =
+      maxBpm ??
+      (targetBpm !== undefined ? targetBpm + bpmTolerance : undefined);
 
     if (bpmMin !== undefined && bpmMax !== undefined) {
       const songs = genre
         ? (this.catalog.songsByGenreSortedByBpm.get(genre) ?? [])
         : this.catalog.allSongsSortedByBpm;
 
-      return applyExcludeAndLimit(sliceByBpm(songs, bpmMin, bpmMax), excludeIds, limit);
+      return applyExcludeAndLimit(
+        sliceByBpm(songs, bpmMin, bpmMax),
+        excludeIds,
+        limit,
+      );
     }
 
-    const songs = genre ? (this.catalog.songsByGenre.get(genre) ?? []) : this.catalog.allSongs;
+    const songs = genre
+      ? (this.catalog.songsByGenre.get(genre) ?? [])
+      : this.catalog.allSongs;
     return applyExcludeAndLimit(songs, excludeIds, limit);
   }
 
@@ -232,4 +255,4 @@ class SongCatalogService {
 }
 
 // Singleton shared across the app.
-export const songCatalog = new SongCatalogService();
+export const songCatalogService = new SongCatalogService();

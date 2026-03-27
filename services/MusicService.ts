@@ -18,6 +18,7 @@
  */
 
 import { Audio } from "expo-av";
+import { songCatalogService } from "./SongCatalogService";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -101,6 +102,8 @@ class MusicService {
       isPlaying: true,
       message: "Your heart and music are now in sync",
     });
+
+    this.sound?.playAsync().catch(() => null);
 
     this.startAdaptLoop();
   }
@@ -283,58 +286,31 @@ class MusicService {
   private async loadLoop(bpm: number): Promise<void> {
     await this.stopAudio();
 
-    // 1. Instead of looping through a static LOOP_LIBRARY,
-    // find a matching YouTube ID from your loaded JSON playlists.
-    const youtubeId = this.getNearestSongIdForBPM(bpm);
+    // Pick a song from the catalog that matches the target BPM (±10 BPM).
+    // Falls back to a wider search across all genres if nothing is found.
+    const song =
+      songCatalogService.pickRandomSong({ targetBpm: 95, bpmTolerance: 10 }) ??
+      songCatalogService.pickRandomSong();
 
-    if (!youtubeId) {
+    if (!song) {
       console.warn("No matching song found for BPM:", bpm);
+      return;
+    }
+
+    if (!song.audioUrl) {
+      console.warn("MusicService: song has no audioUrl, skipping:", song.id);
       return;
     }
 
     try {
       await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
 
-      // Tell UI we are loading
-      this.setState({ ...this.state, message: "Fetching high-quality audio…" });
-
-      // 2. Fetch the audio stream URL from a RapidAPI endpoint
-      // TODO: Register on RapidAPI for a YouTube to MP3/Audio API (like youtube-mp36)
-      // and place your API Key and Host here.
-      const rapidApiKey = "YOUR_RAPIDAPI_KEY_HERE";
-      const rapidApiHost = "youtube-mp36.p.rapidapi.com";
-      const url = `https://${rapidApiHost}/dl?id=${youtubeId}`;
-
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "x-rapidapi-key": rapidApiKey,
-          "x-rapidapi-host": rapidApiHost,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`API returned status ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      // The exact property name depends on the specific RapidAPI endpoint you choose.
-      // Many return the direct stream link as `data.link` or `data.url`.
-      const directAudioStreamUrl = data.link || data.url;
-
-      if (!directAudioStreamUrl) {
-        throw new Error("No download link found in API response");
-      }
-
-      // 3. Mount it to expo-av (treats it exactly like a local file!)
       const { sound } = await Audio.Sound.createAsync(
-        { uri: directAudioStreamUrl },
+        { uri: song.audioUrl },
         { isLooping: true, shouldPlay: this.state.isPlaying },
       );
       this.sound = sound;
 
-      // Ensure the UI knows we are back in sync
       if (this.state.phase === "syncing") {
         this.setState({
           ...this.state,
@@ -342,10 +318,7 @@ class MusicService {
         });
       }
     } catch (e) {
-      console.warn(
-        "MusicService: failed to load YouTube stream via RapidAPI",
-        e,
-      );
+      console.warn("MusicService: failed to load audio", e);
     }
   }
 
