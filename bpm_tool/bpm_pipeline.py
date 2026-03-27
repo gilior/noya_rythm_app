@@ -105,21 +105,11 @@ def download_audio(video_id: str, output_dir: str) -> str:
 # ── Step 2: BPM ───────────────────────────────────────────────────────────────
 
 def calc_bpm(file_path: str) -> float:
-    """Estimate BPM using Essentia's RhythmExtractor2013 (multifeature method).
-
-    Far more accurate than librosa for complex music.
-    Octave normalization folds the result into 55–130 BPM — the range
-    relevant for this app's genres (ambient, lofi, jazz, etc.).
-    """
+    """Estimate BPM using Essentia's RhythmExtractor2013."""
     audio = es.MonoLoader(filename=file_path, sampleRate=44100)()
     audio = audio[:44100 * 60]          # limit to first 60 s
     bpm, _, _, _, _ = es.RhythmExtractor2013(method="multifeature")(audio)
-    bpm = float(bpm)
-    while bpm > 130:
-        bpm /= 2
-    while bpm < 55:
-        bpm *= 2
-    return round(bpm, 2)
+    return round(float(bpm), 2)
 
 
 # ── Step 3: Upload audio ──────────────────────────────────────────────────────
