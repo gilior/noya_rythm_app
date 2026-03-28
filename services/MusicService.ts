@@ -56,18 +56,6 @@ const MILESTONE_DROP_RATIO = 0.1;
 /** Music BPM nudge period (ms) */
 const ADAPT_INTERVAL_MS = 10_000;
 
-/**
- * Pre-generated loop library.
- * Keys are the BPM value, values are require() paths.
- * Add real files here:
- *   [80]:  require('../assets/audio/loop_80bpm.mp3'),
- *   [90]:  require('../assets/audio/loop_90bpm.mp3'),
- *   ...
- */
-const LOOP_LIBRARY: Record<number, number> = {
-  // populated by the developer once audio files are available
-};
-
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 class MusicService {
@@ -280,9 +268,6 @@ class MusicService {
     }
   }
 
-  private getNearestSongIdForBPM(bpm: number): string {
-    return "Km7B76mRIVw";
-  }
   private async loadLoop(bpm: number): Promise<void> {
     await this.stopAudio();
 
@@ -337,7 +322,6 @@ class MusicService {
   private async stopAudio(): Promise<void> {
     if (this.sound) {
       await this.sound.stopAsync().catch(() => null);
-      await this.sound.unloadAsync().catch(() => null);
       this.sound = null;
     }
   }
