@@ -22,12 +22,7 @@ import { songCatalogService } from "./SongCatalogService";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type SessionPhase =
-  | "idle"
-  | "syncing"
-  | "playing"
-  | "slowing"
-  | "completed";
+export type SessionPhase = "idle" | "syncing" | "playing" | "slowing" | "completed";
 
 export interface SessionState {
   phase: SessionPhase;
@@ -59,6 +54,7 @@ const ADAPT_INTERVAL_MS = 10_000;
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 class MusicService {
+  private currentRate = 1.0;
   private state: SessionState = this.defaultState();
   private listeners: Set<StateChangeCallback> = new Set();
   private sound: Audio.Sound | null = null;
@@ -103,8 +99,7 @@ class MusicService {
   updateBPM(newBPM: number): void {
     if (this.state.phase === "idle" || this.state.phase === "completed") return;
 
-    const relativeChange =
-      Math.abs(newBPM - this.state.currentBPM) / this.state.currentBPM;
+    const relativeChange = Math.abs(newBPM - this.state.currentBPM) / this.state.currentBPM;
 
     let newMusicBPM = this.state.musicBPM;
     let message = this.state.message;
@@ -116,9 +111,7 @@ class MusicService {
       this.loadLoop(newMusicBPM); // fire-and-forget
     } else {
       // Minor change: small tempo adjustment
-      newMusicBPM = Math.round(
-        this.state.musicBPM - this.state.musicBPM * relativeChange * 0.5,
-      );
+      newMusicBPM = Math.round(this.state.musicBPM - this.state.musicBPM * relativeChange * 0.5);
       this.adjustTempo(newMusicBPM);
     }
 
@@ -173,7 +166,7 @@ class MusicService {
       isPlaying: true,
       message: "Enjoy some calming music…",
     });
-    this.loadLoop(75);
+    // this.loadLoop(75);
   }
 
   /** Returns session summary and resets internal state */
@@ -269,13 +262,14 @@ class MusicService {
   }
 
   private async loadLoop(bpm: number): Promise<void> {
+    console.log("[MusicService] [loadLoop]", bpm);
+
     await this.stopAudio();
 
     // Pick a song from the catalog that matches the target BPM (±10 BPM).
     // Falls back to a wider search across all genres if nothing is found.
     const song =
-      songCatalogService.pickRandomSong({ targetBpm: 95, bpmTolerance: 10 }) ??
-      songCatalogService.pickRandomSong();
+      songCatalogService.pickRandomSong({ targetBpm: 95, bpmTolerance: 10 }) ?? songCatalogService.pickRandomSong();
 
     if (!song) {
       console.warn("No matching song found for BPM:", bpm);
@@ -313,9 +307,18 @@ class MusicService {
    */
   private adjustTempo(targetBPM: number): void {
     if (!this.sound || this.state.musicBPM === 0) return;
+
     const rate = targetBPM / this.state.musicBPM;
-    // Clamp to reasonable range to avoid distortion
     const clampedRate = Math.min(2.0, Math.max(0.5, rate));
+
+    // Skip if change is less than 3% — avoids glitching for noise-level variations
+    if (Math.abs(clampedRate - this.currentRate) < 0.03) return;
+
+    console.log(
+      `[]MusicService [adjustTempo] musicBPM=${this.state.musicBPM} target=${targetBPM} rate=${clampedRate.toFixed(3)}`,
+    );
+
+    this.currentRate = clampedRate;
     this.sound.setRateAsync(clampedRate, true).catch(() => null);
   }
 
@@ -335,9 +338,7 @@ function delay(ms: number): Promise<void> {
 
 function findNearestBPM(target: number, available: number[]): number | null {
   if (available.length === 0) return null;
-  return available.reduce((prev, cur) =>
-    Math.abs(cur - target) < Math.abs(prev - target) ? cur : prev,
-  );
+  return available.reduce((prev, cur) => (Math.abs(cur - target) < Math.abs(prev - target) ? cur : prev));
 }
 
 // Singleton

@@ -1,15 +1,15 @@
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    Animated,
-    Modal,
-    Platform,
-    StatusBar as RNStatusBar,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Modal,
+  Platform,
+  StatusBar as RNStatusBar,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { Colors, Radius, Spacing } from "../constants/theme";
 import { useProfile } from "../contexts/ProfileContext";
@@ -22,7 +22,7 @@ export default function SessionScreen() {
     startBPM: string;
   }>();
   const startBPM = parseInt(startBPMParam ?? "120", 10);
-
+  console.log(`[Session] startBPMParam (raw): ${startBPMParam} | parsed: ${startBPM}`);
   const { profile, saveSessionStats } = useProfile();
   const { bpm } = useHeartRate("session", startBPM);
   const sessionState = useMusicSession();
@@ -50,21 +50,22 @@ export default function SessionScreen() {
   // Check completion
   useEffect(() => {
     if (!profile || completedRef.current) return;
-    if (musicService.checkCompletion(profile.normalBPM)) {
+    if (sessionState.peakBPM > profile.normalBPM && musicService.checkCompletion(profile.normalBPM)) {
       completedRef.current = true;
       musicService.completeSession();
       setCompletionVisible(true);
     }
-  }, [bpm, profile]);
+  }, [bpm, profile, sessionState.peakBPM]);
 
   // BPM bar animation (progress toward normal)
   const progressAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (!profile || startBPM === 0) return;
-    const progress = Math.min(
-      1,
-      Math.max(0, (startBPM - bpm) / (startBPM - profile.normalBPM)),
-    );
+    const reference = Math.max(startBPM, sessionState.peakBPM);
+    const progress =
+      reference <= profile.normalBPM
+        ? 0
+        : Math.min(1, Math.max(0, (reference - bpm) / (reference - profile.normalBPM)));
     Animated.timing(progressAnim, {
       toValue: progress,
       duration: 600,
@@ -134,9 +135,7 @@ export default function SessionScreen() {
           <TouchableOpacity onPress={handleExitManual} activeOpacity={0.7}>
             <Text style={styles.exitText}>✕ End</Text>
           </TouchableOpacity>
-          <Text style={styles.phaseLabel}>
-            {phaseLabel[sessionState.phase] ?? ""}
-          </Text>
+          <Text style={styles.phaseLabel}>{phaseLabel[sessionState.phase] ?? ""}</Text>
         </View>
 
         {/* Message */}
@@ -146,12 +145,7 @@ export default function SessionScreen() {
 
         {/* BPM comparison */}
         <View style={styles.bpmRow}>
-          <BPMBlock
-            label="Your Heart"
-            value={bpm}
-            color={Colors.accent}
-            large
-          />
+          <BPMBlock label="Your Heart" value={bpm} color={Colors.accent} large />
           <View style={styles.bpmDivider} />
           <BPMBlock
             label="Music"
@@ -165,9 +159,7 @@ export default function SessionScreen() {
         <View style={styles.progressSection}>
           <View style={styles.progressLabelRow}>
             <Text style={styles.progressLabel}>Progress to normal</Text>
-            <Text style={styles.progressLabel}>
-              Target: {profile?.normalBPM ?? "—"} BPM
-            </Text>
+            <Text style={styles.progressLabel}>Target: {profile?.normalBPM ?? "—"} BPM</Text>
           </View>
           <View style={styles.progressTrack}>
             <Animated.View
@@ -186,9 +178,7 @@ export default function SessionScreen() {
 
         {/* Milestones */}
         <View style={styles.milestoneRow}>
-          <Text style={styles.milestoneText}>
-            🏅 Milestones reached: {sessionState.milestonesReached}
-          </Text>
+          <Text style={styles.milestoneText}>🏅 Milestones reached: {sessionState.milestonesReached}</Text>
         </View>
 
         {/* Playback controls */}
@@ -196,37 +186,24 @@ export default function SessionScreen() {
           <ControlButton
             label="⏮"
             onPress={() => musicService.skipLoop()}
-            disabled={
-              sessionState.phase === "idle" ||
-              sessionState.phase === "completed"
-            }
+            disabled={sessionState.phase === "idle" || sessionState.phase === "completed"}
           />
           <ControlButton
             label={sessionState.isPlaying ? "⏸" : "▶"}
             onPress={() => musicService.togglePlayback()}
             primary
-            disabled={
-              sessionState.phase === "idle" || sessionState.phase === "syncing"
-            }
+            disabled={sessionState.phase === "idle" || sessionState.phase === "syncing"}
           />
           <ControlButton
             label="⏭"
             onPress={() => musicService.skipLoop()}
-            disabled={
-              sessionState.phase === "idle" ||
-              sessionState.phase === "completed"
-            }
+            disabled={sessionState.phase === "idle" || sessionState.phase === "completed"}
           />
         </View>
       </View>
 
       {/* Completion Modal */}
-      <Modal
-        visible={completionVisible}
-        transparent
-        animationType="slide"
-        statusBarTranslucent
-      >
+      <Modal visible={completionVisible} transparent animationType="slide" statusBarTranslucent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>🎉 Well done!</Text>
@@ -235,18 +212,10 @@ export default function SessionScreen() {
               Current BPM: <Text style={styles.modalBpm}>{bpm}</Text>
             </Text>
             <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.modalBtnSecondary}
-                onPress={handleContinue}
-                activeOpacity={0.7}
-              >
+              <TouchableOpacity style={styles.modalBtnSecondary} onPress={handleContinue} activeOpacity={0.7}>
                 <Text style={styles.modalBtnSecondaryText}>Continue ♫</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalBtnPrimary}
-                onPress={handleEnd}
-                activeOpacity={0.8}
-              >
+              <TouchableOpacity style={styles.modalBtnPrimary} onPress={handleEnd} activeOpacity={0.8}>
                 <Text style={styles.modalBtnPrimaryText}>View Summary</Text>
               </TouchableOpacity>
             </View>
@@ -271,15 +240,7 @@ function BPMBlock({
   return (
     <View style={styles.bpmBlock}>
       <Text style={styles.bpmBlockLabel}>{label}</Text>
-      <Text
-        style={[
-          styles.bpmBlockValue,
-          large && styles.bpmBlockValueLarge,
-          { color },
-        ]}
-      >
-        {value}
-      </Text>
+      <Text style={[styles.bpmBlockValue, large && styles.bpmBlockValueLarge, { color }]}>{value}</Text>
       <Text style={styles.bpmBlockUnit}>BPM</Text>
     </View>
   );
@@ -298,18 +259,12 @@ function ControlButton({
 }) {
   return (
     <TouchableOpacity
-      style={[
-        styles.ctrlBtn,
-        primary && styles.ctrlBtnPrimary,
-        disabled && styles.ctrlBtnDisabled,
-      ]}
+      style={[styles.ctrlBtn, primary && styles.ctrlBtnPrimary, disabled && styles.ctrlBtnDisabled]}
       onPress={onPress}
       disabled={disabled}
       activeOpacity={0.75}
     >
-      <Text style={[styles.ctrlBtnIcon, primary && styles.ctrlBtnIconPrimary]}>
-        {label}
-      </Text>
+      <Text style={[styles.ctrlBtnIcon, primary && styles.ctrlBtnIconPrimary]}>{label}</Text>
     </TouchableOpacity>
   );
 }
