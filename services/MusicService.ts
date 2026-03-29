@@ -312,7 +312,7 @@ class MusicService {
     const clampedRate = Math.min(2.0, Math.max(0.5, rate));
 
     // Skip if change is less than 3% — avoids glitching for noise-level variations
-    if (Math.abs(clampedRate - this.currentRate) < 0.03) return;
+    // if (Math.abs(clampedRate - this.currentRate) < 0.03) return;
 
     console.log(
       `[]MusicService [adjustTempo] musicBPM=${this.state.musicBPM} target=${targetBPM} rate=${clampedRate.toFixed(3)}`,
