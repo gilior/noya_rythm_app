@@ -30,8 +30,6 @@ export interface SessionState {
   peakHeartRate: number;
   startHeartRate: number;
   milestonesReached: number;
-  /** Heart-rate threshold at which the next milestone fires */
-  nextMilestoneAt: number;
   startTime: number;
   isPlaying: boolean;
   message: string;

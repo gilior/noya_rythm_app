@@ -20,6 +20,7 @@ const ADAPT_INTERVAL_MS = 30_000;
 class MusicService {
   private currentRate = 1.0;
   private originSongBPM = 0;
+  private nextMilestoneAt = 0;
   private state: SessionState = this.defaultState();
   private listeners: Set<StateChangeCallback> = new Set();
   private sound: Audio.Sound | null = null;
@@ -29,6 +30,7 @@ class MusicService {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   async startSession(initialHeartRate: number): Promise<void> {
+    this.nextMilestoneAt = initialHeartRate * (1 - MILESTONE_DROP_RATIO);
     this.setState({
       ...this.defaultState(),
       phase: "syncing",
@@ -37,11 +39,10 @@ class MusicService {
       peakHeartRate: initialHeartRate,
       startHeartRate: initialHeartRate,
       startTime: Date.now(),
-      nextMilestoneAt: initialHeartRate * (1 - MILESTONE_DROP_RATIO),
       message: "Syncing music to your heartbeat…",
     });
 
-    await this.loadLoop(initialHeartRate);
+    await this.loadSong(initialHeartRate);
 
     // Short artificial sync pause so the UI can show the syncing state
     await delay(2_000);
@@ -55,7 +56,7 @@ class MusicService {
 
     this.sound?.playAsync().catch(() => null);
 
-    this.startAdaptLoop();
+    this.startSyncSongFlow();
   }
 
   updateSongBpmPerNewHeartRate(heartRate: number): void {
@@ -63,7 +64,8 @@ class MusicService {
     if (this.state.currentHeartRate === 0) return;
 
     const peakHeartRate = Math.max(this.state.peakHeartRate, heartRate);
-    let { milestonesReached, nextMilestoneAt, message } = this.state;
+    let { milestonesReached, message } = this.state;
+    let nextMilestoneAt = this.nextMilestoneAt;
 
     if (heartRate <= nextMilestoneAt && nextMilestoneAt > 0) {
       milestonesReached++;
@@ -72,13 +74,13 @@ class MusicService {
       message = `Great job! Your heart slowed by ${dropPct}% 💫`;
     }
 
+    this.nextMilestoneAt = nextMilestoneAt;
     this.setState({
       ...this.state,
       phase: "slowing",
       currentHeartRate: heartRate,
       peakHeartRate,
       milestonesReached,
-      nextMilestoneAt,
       message,
     });
 
@@ -89,7 +91,7 @@ class MusicService {
         this.originSongBPM > 0 ? Math.abs(targetSongBPM - this.originSongBPM) / this.originSongBPM : 1;
       if (relativeSongBpmChange >= MINOR_CHANGE_THRESHOLD) {
         this.setState({ ...this.state, message: "Adapting music to your new rhythm…" });
-        this.loadLoop(targetSongBPM); // fire-and-forget
+        this.loadSong(targetSongBPM); // fire-and-forget
       }
     }
   }
@@ -105,7 +107,7 @@ class MusicService {
   }
 
   completeSession(): void {
-    this.stopAdaptLoop();
+    this.stopSyncSongFlow();
     this.setState({
       ...this.state,
       phase: "completed",
@@ -129,8 +131,8 @@ class MusicService {
     });
 
     this.sound?.playAsync().catch(() => null);
-    this.startAdaptLoop();
-    this.loadLoop(targetSongBPM).catch(() => null);
+    this.startSyncSongFlow();
+    this.loadSong(targetSongBPM).catch(() => null);
   }
 
   /** Returns session summary and resets internal state */
@@ -140,14 +142,14 @@ class MusicService {
     duration: number;
     milestonesReached: number;
   } {
-    this.stopAdaptLoop();
+    this.stopSyncSongFlow();
     const result = {
       startHeartRate: this.state.startHeartRate,
       lowestHeartRate: this.state.currentHeartRate,
       duration: Math.round((Date.now() - this.state.startTime) / 1_000),
       milestonesReached: this.state.milestonesReached,
     };
-    this.stopAudio();
+    this.stopSong();
     this.setState(this.defaultState());
     return result;
   }
@@ -165,7 +167,7 @@ class MusicService {
   skipLoop(): void {
     if (this.state.phase === "idle" || this.state.phase === "completed") return;
     this.setState({ ...this.state, message: "Loading next track…" });
-    this.loadLoop(this.state.currentSongBPM).catch(() => null);
+    this.loadSong(this.state.currentSongBPM).catch(() => null);
   }
 
   onStateChange(cb: StateChangeCallback): () => void {
@@ -188,7 +190,6 @@ class MusicService {
       peakHeartRate: 0,
       startHeartRate: 0,
       milestonesReached: 0,
-      nextMilestoneAt: 0,
       startTime: 0,
       isPlaying: false,
       message: "",
@@ -201,8 +202,8 @@ class MusicService {
     this.listeners.forEach((cb) => cb(this.state));
   }
 
-  private startAdaptLoop(): void {
-    this.stopAdaptLoop();
+  private startSyncSongFlow(): void {
+    this.stopSyncSongFlow();
     this.adaptIntervalId = setInterval(() => {
       if (this.state.phase !== "playing" && this.state.phase !== "slowing") return;
       if (this.isLoadingLoop) return; // a major-change load is already in progress
@@ -219,24 +220,24 @@ class MusicService {
       // Minor change: nudge down only if music is still above target
       if (this.state.currentSongBPM > targetSongBPM) {
         const nudgedSongBPM = Math.max(targetSongBPM, this.state.currentSongBPM - 2);
-        const actualSongBPM = this.adjustTempo(nudgedSongBPM);
+        const actualSongBPM = this.adjustBPM(nudgedSongBPM);
         this.setState({ ...this.state, currentSongBPM: actualSongBPM });
       }
     }, ADAPT_INTERVAL_MS);
   }
 
-  private stopAdaptLoop(): void {
+  private stopSyncSongFlow(): void {
     if (this.adaptIntervalId) {
       clearInterval(this.adaptIntervalId);
       this.adaptIntervalId = null;
     }
   }
 
-  private async loadLoop(targetSongBPM: number): Promise<void> {
+  private async loadSong(targetSongBPM: number): Promise<void> {
     console.log("[MusicService] [loadLoop]", targetSongBPM);
     this.isLoadingLoop = true;
     try {
-      await this.stopAudio();
+      await this.stopSong();
 
       // Pick a song from the catalog that matches the target BPM (±10 BPM).
       // Falls back to a wider search across all genres if nothing is found.
@@ -287,7 +288,7 @@ class MusicService {
    * Adjusts the playback rate to approximate a tempo change.
    * True pitch-preserving time-stretch requires a native DSP module.
    */
-  private adjustTempo(targetSongBPM: number): number {
+  private adjustBPM(targetSongBPM: number): number {
     if (!this.sound || this.originSongBPM === 0) return this.state.currentSongBPM;
 
     const rate = targetSongBPM / this.originSongBPM;
@@ -302,7 +303,7 @@ class MusicService {
     return Math.round(this.originSongBPM * clampedRate);
   }
 
-  private async stopAudio(): Promise<void> {
+  private async stopSong(): Promise<void> {
     if (this.sound) {
       await this.sound.stopAsync().catch(() => null);
       this.sound = null;
@@ -314,11 +315,6 @@ class MusicService {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function findNearestBPM(target: number, available: number[]): number | null {
-  if (available.length === 0) return null;
-  return available.reduce((prev, cur) => (Math.abs(cur - target) < Math.abs(prev - target) ? cur : prev));
 }
 
 // Singleton
