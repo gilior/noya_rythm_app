@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { musicService, SessionState } from '../services/MusicService';
+import { useEffect, useState } from "react";
+import { musicService } from "../services/MusicService";
+import { SessionState } from "../types";
 
 /** Subscribes to music session state changes */
 export function useMusicSession(): SessionState {

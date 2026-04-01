@@ -1,43 +1,6 @@
-/**
- * MusicService
- *
- * Manages the full music-session state machine and BPM synchronisation logic.
- *
- * --- Audio integration ---
- * The service is wired to expo-av for playback.  Drop audio loop files into
- * assets/audio/ (e.g. loop_70bpm.mp3 … loop_150bpm.mp3) and map them in
- * LOOP_LIBRARY below.  Without files the session UI still runs fully.
- *
- * For real-time tempo adjustment (time-stretching) you would need a native
- * audio library such as react-native-track-player + a custom DSP plugin.
- * That is outside Expo Go's scope and is documented here as the integration
- * point: replace adjustTempo() with a native call.
- *
- * AI-generated loops: call your generation API inside generateLoop() and
- * cache the result locally with expo-file-system.
- */
-
 import { Audio } from "expo-av";
+import { SessionState } from "../types";
 import { songCatalogService } from "./SongCatalogService";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export type SessionPhase = "idle" | "syncing" | "playing" | "slowing" | "completed";
-
-export interface SessionState {
-  phase: SessionPhase;
-  currentBPM: number;
-  musicBPM: number;
-  peakBPM: number;
-  startBPM: number;
-  milestonesReached: number;
-  /** BPM threshold at which the next milestone fires */
-  nextMilestoneAt: number;
-  startTime: number;
-  isPlaying: boolean;
-  message: string;
-  currentSong: { title: string; bpm: number | null } | null;
-}
 
 type StateChangeCallback = (state: SessionState) => void;
 
@@ -50,34 +13,35 @@ const SLOW_TARGET_RATIO = 0.92;
 /** Each milestone fires at every 10 % drop from peak */
 const MILESTONE_DROP_RATIO = 0.1;
 /** Music BPM nudge period (ms) */
-const ADAPT_INTERVAL_MS = 10_000;
+const ADAPT_INTERVAL_MS = 30_000;
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 class MusicService {
   private currentRate = 1.0;
-  private currentSongNativeBpm = 0;
+  private originSongBPM = 0;
   private state: SessionState = this.defaultState();
   private listeners: Set<StateChangeCallback> = new Set();
   private sound: Audio.Sound | null = null;
   private adaptIntervalId: ReturnType<typeof setInterval> | null = null;
+  private isLoadingLoop = false;
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
-  async startSession(initialBPM: number): Promise<void> {
+  async startSession(initialHeartRate: number): Promise<void> {
     this.setState({
       ...this.defaultState(),
       phase: "syncing",
-      currentBPM: initialBPM,
-      musicBPM: initialBPM,
-      peakBPM: initialBPM,
-      startBPM: initialBPM,
+      currentHeartRate: initialHeartRate,
+      currentSongBPM: initialHeartRate,
+      peakHeartRate: initialHeartRate,
+      startHeartRate: initialHeartRate,
       startTime: Date.now(),
-      nextMilestoneAt: initialBPM * (1 - MILESTONE_DROP_RATIO),
+      nextMilestoneAt: initialHeartRate * (1 - MILESTONE_DROP_RATIO),
       message: "Syncing music to your heartbeat…",
     });
 
-    await this.loadLoop(initialBPM);
+    await this.loadLoop(initialHeartRate);
 
     // Short artificial sync pause so the UI can show the syncing state
     await delay(2_000);
@@ -94,56 +58,47 @@ class MusicService {
     this.startAdaptLoop();
   }
 
-  /**
-   * Called each time a new BPM reading arrives during a session.
-   * Decides whether to adjust tempo (minor change) or load a new loop (major).
-   */
-  updateBPM(newBPM: number): void {
-    if (this.state.phase === "idle" || this.state.phase === "completed") return;
+  updateSongBpmPerNewHeartRate(heartRate: number): void {
+    if (this.state.phase === "idle" || this.state.phase === "syncing" || this.state.phase === "completed") return;
+    if (this.state.currentHeartRate === 0) return;
 
-    const relativeChange = Math.abs(newBPM - this.state.currentBPM) / this.state.currentBPM;
+    const peakHeartRate = Math.max(this.state.peakHeartRate, heartRate);
+    let { milestonesReached, nextMilestoneAt, message } = this.state;
 
-    let newMusicBPM = this.state.musicBPM;
-    let message = this.state.message;
-
-    if (relativeChange >= MINOR_CHANGE_THRESHOLD) {
-      // Major change: select/generate a new loop at the new BPM range
-      newMusicBPM = Math.round(newBPM * SLOW_TARGET_RATIO);
-      message = "Adapting music to your new rhythm…";
-      this.loadLoop(newMusicBPM); // fire-and-forget
-    } else {
-      // Minor change: small tempo adjustment via playback rate
-      const adjustTarget = Math.round(this.state.musicBPM - this.state.musicBPM * relativeChange * 0.5);
-      newMusicBPM = this.adjustTempo(adjustTarget);
-    }
-
-    const peakBPM = Math.max(this.state.peakBPM, newBPM);
-    let { milestonesReached, nextMilestoneAt } = this.state;
-
-    if (newBPM <= nextMilestoneAt && nextMilestoneAt > 0) {
+    if (heartRate <= nextMilestoneAt && nextMilestoneAt > 0) {
       milestonesReached++;
       nextMilestoneAt = nextMilestoneAt * (1 - MILESTONE_DROP_RATIO);
-      const dropPct = Math.round((1 - newBPM / peakBPM) * 100);
+      const dropPct = Math.round((1 - heartRate / peakHeartRate) * 100);
       message = `Great job! Your heart slowed by ${dropPct}% 💫`;
     }
 
     this.setState({
       ...this.state,
       phase: "slowing",
-      currentBPM: newBPM,
-      musicBPM: Math.max(50, newMusicBPM),
-      peakBPM,
+      currentHeartRate: heartRate,
+      peakHeartRate,
       milestonesReached,
       nextMilestoneAt,
       message,
     });
+
+    // Major change: load a new loop immediately (adapt loop handles minor nudges)
+    if (!this.isLoadingLoop) {
+      const targetSongBPM = Math.round(heartRate * SLOW_TARGET_RATIO);
+      const relativeSongBpmChange =
+        this.originSongBPM > 0 ? Math.abs(targetSongBPM - this.originSongBPM) / this.originSongBPM : 1;
+      if (relativeSongBpmChange >= MINOR_CHANGE_THRESHOLD) {
+        this.setState({ ...this.state, message: "Adapting music to your new rhythm…" });
+        this.loadLoop(targetSongBPM); // fire-and-forget
+      }
+    }
   }
 
   /** Returns true when BPM has reached the user's normal level */
-  checkCompletion(normalBPM: number): boolean {
+  checkCompletion(normalHeartRate: number): boolean {
     return (
-      this.state.currentBPM > 0 &&
-      this.state.currentBPM <= normalBPM &&
+      this.state.currentHeartRate > 0 &&
+      this.state.currentHeartRate <= normalHeartRate &&
       this.state.phase !== "completed" &&
       this.state.phase !== "idle"
     );
@@ -160,32 +115,35 @@ class MusicService {
   }
 
   continuePlaying(): void {
-    const targetBPM = Math.max(50, Math.round(this.state.currentBPM || this.state.musicBPM || this.state.startBPM));
+    const targetSongBPM = Math.max(
+      50,
+      Math.round(this.state.currentHeartRate || this.state.currentSongBPM || this.state.startHeartRate),
+    );
 
     this.setState({
       ...this.state,
       phase: "slowing",
-      musicBPM: targetBPM,
+      currentSongBPM: targetSongBPM,
       isPlaying: true,
       message: "Enjoy some calming music…",
     });
 
     this.sound?.playAsync().catch(() => null);
     this.startAdaptLoop();
-    this.loadLoop(targetBPM).catch(() => null);
+    this.loadLoop(targetSongBPM).catch(() => null);
   }
 
   /** Returns session summary and resets internal state */
   endSession(): {
-    startBPM: number;
-    lowestBPM: number;
+    startHeartRate: number;
+    lowestHeartRate: number;
     duration: number;
     milestonesReached: number;
   } {
     this.stopAdaptLoop();
     const result = {
-      startBPM: this.state.startBPM,
-      lowestBPM: this.state.currentBPM,
+      startHeartRate: this.state.startHeartRate,
+      lowestHeartRate: this.state.currentHeartRate,
       duration: Math.round((Date.now() - this.state.startTime) / 1_000),
       milestonesReached: this.state.milestonesReached,
     };
@@ -206,12 +164,8 @@ class MusicService {
 
   skipLoop(): void {
     if (this.state.phase === "idle" || this.state.phase === "completed") return;
-    const msg = this.state.message;
     this.setState({ ...this.state, message: "Loading next track…" });
-    // Reload the loop at current music BPM
-    this.loadLoop(this.state.musicBPM).then(() => {
-      this.setState({ ...this.state, message: msg });
-    });
+    this.loadLoop(this.state.currentSongBPM).catch(() => null);
   }
 
   onStateChange(cb: StateChangeCallback): () => void {
@@ -229,10 +183,10 @@ class MusicService {
   private defaultState(): SessionState {
     return {
       phase: "idle",
-      currentBPM: 0,
-      musicBPM: 0,
-      peakBPM: 0,
-      startBPM: 0,
+      currentHeartRate: 0,
+      currentSongBPM: 0,
+      peakHeartRate: 0,
+      startHeartRate: 0,
       milestonesReached: 0,
       nextMilestoneAt: 0,
       startTime: 0,
@@ -250,13 +204,23 @@ class MusicService {
   private startAdaptLoop(): void {
     this.stopAdaptLoop();
     this.adaptIntervalId = setInterval(() => {
-      if (this.state.phase === "playing" || this.state.phase === "slowing") {
-        const target = Math.round(this.state.currentBPM * SLOW_TARGET_RATIO);
-        if (this.state.musicBPM > target) {
-          const nudged = Math.max(target, this.state.musicBPM - 2);
-          this.adjustTempo(nudged);
-          this.setState({ ...this.state, musicBPM: nudged });
-        }
+      if (this.state.phase !== "playing" && this.state.phase !== "slowing") return;
+      if (this.isLoadingLoop) return; // a major-change load is already in progress
+
+      const targetSongBPM = Math.round(this.state.currentHeartRate * SLOW_TARGET_RATIO);
+      const relativeSongBpmChange =
+        this.originSongBPM > 0 ? Math.abs(targetSongBPM - this.originSongBPM) / this.originSongBPM : 1;
+
+      if (relativeSongBpmChange >= MINOR_CHANGE_THRESHOLD) {
+        // Major drift — HR handler fires loadLoop on readings; nothing to do here
+        return;
+      }
+
+      // Minor change: nudge down only if music is still above target
+      if (this.state.currentSongBPM > targetSongBPM) {
+        const nudgedSongBPM = Math.max(targetSongBPM, this.state.currentSongBPM - 2);
+        const actualSongBPM = this.adjustTempo(nudgedSongBPM);
+        this.setState({ ...this.state, currentSongBPM: actualSongBPM });
       }
     }, ADAPT_INTERVAL_MS);
   }
@@ -268,35 +232,36 @@ class MusicService {
     }
   }
 
-  private async loadLoop(bpm: number): Promise<void> {
-    console.log("[MusicService] [loadLoop]", bpm);
-
-    await this.stopAudio();
-
-    // Pick a song from the catalog that matches the target BPM (±10 BPM).
-    // Falls back to a wider search across all genres if nothing is found.
-    const song =
-      songCatalogService.pickRandomSong({ targetBpm: bpm, bpmTolerance: 10 }) ?? songCatalogService.pickRandomSong();
-
-    if (!song) {
-      console.warn("No matching song found for BPM:", bpm);
-      return;
-    }
-
-    this.currentSongNativeBpm = song.bpm ?? bpm;
-    this.currentRate = 1.0;
-    this.setState({
-      ...this.state,
-      currentSong: { title: song.title, bpm: song.bpm },
-      musicBPM: Math.round(this.currentSongNativeBpm),
-    });
-
-    if (!song.audioUrl) {
-      console.warn("MusicService: song has no audioUrl, skipping:", song.id);
-      return;
-    }
-
+  private async loadLoop(targetSongBPM: number): Promise<void> {
+    console.log("[MusicService] [loadLoop]", targetSongBPM);
+    this.isLoadingLoop = true;
     try {
+      await this.stopAudio();
+
+      // Pick a song from the catalog that matches the target BPM (±10 BPM).
+      // Falls back to a wider search across all genres if nothing is found.
+      const song =
+        songCatalogService.pickRandomSong({ targetBpm: targetSongBPM, bpmTolerance: 10 }) ??
+        songCatalogService.pickRandomSong();
+
+      if (!song) {
+        console.warn("No matching song found for BPM:", targetSongBPM);
+        return;
+      }
+
+      this.originSongBPM = song.bpm ?? targetSongBPM;
+      this.currentRate = 1.0;
+      this.setState({
+        ...this.state,
+        currentSong: { title: song.title, bpm: song.bpm },
+        currentSongBPM: Math.round(this.originSongBPM),
+      });
+
+      if (!song.audioUrl) {
+        console.warn("MusicService: song has no audioUrl, skipping:", song.id);
+        return;
+      }
+
       await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
 
       const { sound } = await Audio.Sound.createAsync(
@@ -313,6 +278,8 @@ class MusicService {
       }
     } catch (e) {
       console.warn("MusicService: failed to load audio", e);
+    } finally {
+      this.isLoadingLoop = false;
     }
   }
 
@@ -320,19 +287,19 @@ class MusicService {
    * Adjusts the playback rate to approximate a tempo change.
    * True pitch-preserving time-stretch requires a native DSP module.
    */
-  private adjustTempo(targetBPM: number): number {
-    if (!this.sound || this.currentSongNativeBpm === 0) return this.state.musicBPM;
+  private adjustTempo(targetSongBPM: number): number {
+    if (!this.sound || this.originSongBPM === 0) return this.state.currentSongBPM;
 
-    const rate = targetBPM / this.currentSongNativeBpm;
+    const rate = targetSongBPM / this.originSongBPM;
     const clampedRate = Math.min(2.0, Math.max(0.5, rate));
 
     console.log(
-      `[MusicService] [adjustTempo] nativeBPM=${this.currentSongNativeBpm} target=${targetBPM} rate=${clampedRate.toFixed(3)}`,
+      `[MusicService] [adjustTempo] nativeSongBPM=${this.originSongBPM} targetSongBPM=${targetSongBPM} rate=${clampedRate.toFixed(3)}`,
     );
 
     this.currentRate = clampedRate;
     this.sound.setRateAsync(clampedRate, true).catch(() => null);
-    return Math.round(this.currentSongNativeBpm * clampedRate);
+    return Math.round(this.originSongBPM * clampedRate);
   }
 
   private async stopAudio(): Promise<void> {

@@ -1,22 +1,6 @@
-import altRockSongs from "../assets/songs/lib_smaple/alt-rock.json";
-// import altRockSongs from "../assets/songs/lib/alt-rock.json";
-// import ambientSongs from "../assets/songs/lib/ambient.json";
-// import classicalSongs from "../assets/songs/lib/classical.json";
-// import downtempoSongs from "../assets/songs/lib/downtempo.json";
-// import jazzSongs from "../assets/songs/lib/jazz.json";
-// import lofiSongs from "../assets/songs/lib/lofi.json";
-// import meditationSongs from "../assets/songs/lib/meditation.json";
-// import natureSongs from "../assets/songs/lib/nature.json";
-// import pianoSongs from "../assets/songs/lib/piano.json";
-// import rockSongs from "../assets/songs/lib/rock.json";
+import songs from "../assets/songs/output_smaple/samples.json";
 
-type RawSong = {
-  id?: string;
-  title?: string;
-  channel?: string;
-  BPM?: string | number | null;
-  audio_url?: string | null;
-};
+type RawSong = (typeof songs)[number];
 
 export interface CatalogSong {
   id: string;
@@ -43,19 +27,6 @@ export interface CatalogFilter {
   /** Maximum number of songs to return. When omitted, all matching songs are returned. */
   limit?: number;
 }
-
-const RAW_LIBRARY: Record<string, RawSong[]> = {
-  "alt-rock": altRockSongs,
-  // ambient: ambientSongs,
-  // classical: classicalSongs,
-  // downtempo: downtempoSongs,
-  // jazz: jazzSongs,
-  // lofi: lofiSongs,
-  // meditation: meditationSongs,
-  // nature: natureSongs,
-  // piano: pianoSongs,
-  // rock: rockSongs,
-};
 
 function normalizeBpm(value: RawSong["BPM"]): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -89,10 +60,7 @@ function hasBpm(song: CatalogSong): song is CatalogSong & { bpm: number } {
   return song.bpm !== null;
 }
 
-function lowerBound(
-  songs: readonly (CatalogSong & { bpm: number })[],
-  bpm: number,
-): number {
+function lowerBound(songs: readonly (CatalogSong & { bpm: number })[], bpm: number): number {
   let low = 0;
   let high = songs.length;
 
@@ -113,23 +81,19 @@ function createCatalog() {
   const songsById = new Map<string, CatalogSong>();
   const songsByGenre = new Map<string, CatalogSong[]>();
 
-  for (const [genre, rawSongs] of Object.entries(RAW_LIBRARY)) {
-    const normalizedSongs = rawSongs
-      .map((song) => normalizeSong(genre, song))
-      .filter((song): song is CatalogSong => song !== null);
+  for (const rawSong of songs) {
+    const song = normalizeSong(rawSong.genre, rawSong);
+    if (!song) continue;
 
-    songsByGenre.set(genre, normalizedSongs);
-    allSongs.push(...normalizedSongs);
+    allSongs.push(song);
+    songsById.set(song.id, song);
 
-    for (const song of normalizedSongs) {
-      songsById.set(song.id, song);
-    }
+    const genreSongs = songsByGenre.get(song.genre) ?? [];
+    genreSongs.push(song);
+    songsByGenre.set(song.genre, genreSongs);
   }
 
-  const songsByGenreSortedByBpm = new Map<
-    string,
-    (CatalogSong & { bpm: number })[]
-  >();
+  const songsByGenreSortedByBpm = new Map<string, (CatalogSong & { bpm: number })[]>();
 
   for (const [genre, songs] of songsByGenre.entries()) {
     songsByGenreSortedByBpm.set(
@@ -138,9 +102,7 @@ function createCatalog() {
     );
   }
 
-  const allSongsSortedByBpm = allSongs
-    .filter(hasBpm)
-    .sort((a, b) => a.bpm - b.bpm);
+  const allSongsSortedByBpm = allSongs.filter(hasBpm).sort((a, b) => a.bpm - b.bpm);
 
   return {
     allSongs,
@@ -151,21 +113,13 @@ function createCatalog() {
   };
 }
 
-function sliceByBpm(
-  songs: readonly (CatalogSong & { bpm: number })[],
-  minBpm: number,
-  maxBpm: number,
-) {
+function sliceByBpm(songs: readonly (CatalogSong & { bpm: number })[], minBpm: number, maxBpm: number) {
   const start = lowerBound(songs, minBpm);
   const end = lowerBound(songs, maxBpm + Number.EPSILON);
   return songs.slice(start, end);
 }
 
-function applyExcludeAndLimit(
-  songs: readonly CatalogSong[],
-  excludeIds?: Iterable<string>,
-  limit?: number,
-) {
+function applyExcludeAndLimit(songs: readonly CatalogSong[], excludeIds?: Iterable<string>, limit?: number) {
   const excluded = excludeIds ? new Set(excludeIds) : null;
 
   if (!excluded && limit === undefined) {
@@ -208,38 +162,18 @@ class SongCatalogService {
   }
 
   findSongs(filter: CatalogFilter = {}): CatalogSong[] {
-    const {
-      genre,
-      targetBpm,
-      bpmTolerance = 5,
-      minBpm,
-      maxBpm,
-      excludeIds,
-      limit,
-    } = filter;
+    const { genre, targetBpm, bpmTolerance = 5, minBpm, maxBpm, excludeIds, limit } = filter;
 
-    const bpmMin =
-      minBpm ??
-      (targetBpm !== undefined ? targetBpm - bpmTolerance : undefined);
-    const bpmMax =
-      maxBpm ??
-      (targetBpm !== undefined ? targetBpm + bpmTolerance : undefined);
+    const bpmMin = minBpm ?? (targetBpm !== undefined ? targetBpm - bpmTolerance : undefined);
+    const bpmMax = maxBpm ?? (targetBpm !== undefined ? targetBpm + bpmTolerance : undefined);
 
     if (bpmMin !== undefined && bpmMax !== undefined) {
-      const songs = genre
-        ? (this.catalog.songsByGenreSortedByBpm.get(genre) ?? [])
-        : this.catalog.allSongsSortedByBpm;
+      const songs = genre ? (this.catalog.songsByGenreSortedByBpm.get(genre) ?? []) : this.catalog.allSongsSortedByBpm;
 
-      return applyExcludeAndLimit(
-        sliceByBpm(songs, bpmMin, bpmMax),
-        excludeIds,
-        limit,
-      );
+      return applyExcludeAndLimit(sliceByBpm(songs, bpmMin, bpmMax), excludeIds, limit);
     }
 
-    const songs = genre
-      ? (this.catalog.songsByGenre.get(genre) ?? [])
-      : this.catalog.allSongs;
+    const songs = genre ? (this.catalog.songsByGenre.get(genre) ?? []) : this.catalog.allSongs;
     return applyExcludeAndLimit(songs, excludeIds, limit);
   }
 

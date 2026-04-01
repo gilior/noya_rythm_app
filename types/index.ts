@@ -1,14 +1,14 @@
 export interface UserProfile {
-  normalBPM: number;
-  tooFastBPM: number;
+  normalHeartRate: number;
+  tooFastHeartRate: number;
   preferredGenres: string[];
   lastSessionStats?: SessionStats;
-  bpmHistory?: BPMReading[];
+  heartRateHistory?: BPMReading[];
 }
 
 export interface SessionStats {
-  startBPM: number;
-  lowestBPM: number;
+  startHeartRate: number;
+  lowestHeartRate: number;
   duration: number; // seconds
   milestonesReached: number;
   date: string;
@@ -19,4 +19,21 @@ export interface BPMReading {
   timestamp: number;
 }
 
-export type HeartRateStatus = 'normal' | 'elevated' | 'high' | 'unknown';
+export type HeartRateStatus = "normal" | "elevated" | "high" | "unknown";
+
+export type SessionPhase = "idle" | "syncing" | "playing" | "slowing" | "completed";
+
+export interface SessionState {
+  phase: SessionPhase;
+  currentHeartRate: number;
+  currentSongBPM: number;
+  peakHeartRate: number;
+  startHeartRate: number;
+  milestonesReached: number;
+  /** Heart-rate threshold at which the next milestone fires */
+  nextMilestoneAt: number;
+  startTime: number;
+  isPlaying: boolean;
+  message: string;
+  currentSong: { title: string; bpm: number | null } | null;
+}

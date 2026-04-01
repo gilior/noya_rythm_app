@@ -29,20 +29,20 @@ class HeartRateService {
   private connected = true;
 
   // Simulation state
-  private simMode: 'idle' | 'session' = 'idle';
+  private simMode: "idle" | "session" = "idle";
   private currentSim = 72;
-  private sessionStartBPM = 120;
+  private sessionStartHeartRate = 120;
   private sessionElapsedSec = 0;
 
   // ─── Public API ──────────────────────────────────────────────────────────────
 
-  startMonitoring(mode: 'idle' | 'session' = 'idle', startBPM?: number): void {
+  startMonitoring(mode: "idle" | "session" = "idle", startHeartRate?: number): void {
     this.simMode = mode;
     this.history = [];
 
-    if (mode === 'session' && startBPM != null) {
-      this.sessionStartBPM = startBPM;
-      this.currentSim = startBPM;
+    if (mode === "session" && startHeartRate != null) {
+      this.sessionStartHeartRate = startHeartRate;
+      this.currentSim = startHeartRate;
       this.sessionElapsedSec = 0;
     } else {
       // Resting baseline 65–80
@@ -96,9 +96,7 @@ class HeartRateService {
     this.history.push(raw);
     if (this.history.length > SMOOTHING_WINDOW) this.history.shift();
 
-    const smoothed = Math.round(
-      this.history.reduce((a, b) => a + b, 0) / this.history.length,
-    );
+    const smoothed = Math.round(this.history.reduce((a, b) => a + b, 0) / this.history.length);
     this.publish(smoothed);
   }
 
@@ -115,12 +113,12 @@ class HeartRateService {
    *              Drops ~40% over ~5 minutes with small noise.
    */
   private simulateReading(): number {
-    if (this.simMode === 'session') {
+    if (this.simMode === "session") {
       this.sessionElapsedSec += POLL_INTERVAL_MS / 1_000;
       const progress = Math.min(this.sessionElapsedSec / 300, 1); // 300 s ≈ 5 min
-      const drop = this.sessionStartBPM * 0.4 * progress;
+      const drop = this.sessionStartHeartRate * 0.4 * progress;
       const noise = (Math.random() - 0.5) * 6;
-      this.currentSim = Math.max(50, this.sessionStartBPM - drop + noise);
+      this.currentSim = Math.max(50, this.sessionStartHeartRate - drop + noise);
     } else {
       const delta = (Math.random() - 0.5) * 4;
       this.currentSim = Math.max(55, Math.min(90, this.currentSim + delta));

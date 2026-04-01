@@ -19,10 +19,8 @@ const MAX_GENRES = 3;
 
 export default function SetupScreen() {
   const { saveProfile } = useProfile();
-  const [normalBPM, setNormalBPM] = useState(String(DEFAULT_PROFILE.normalBPM));
-  const [tooFastBPM, setTooFastBPM] = useState(
-    String(DEFAULT_PROFILE.tooFastBPM),
-  );
+  const [normalHeartRate, setNormalHeartRate] = useState(String(DEFAULT_PROFILE.normalHeartRate));
+  const [tooFastHeartRate, setTooFastHeartRate] = useState(String(DEFAULT_PROFILE.tooFastHeartRate));
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -38,18 +36,15 @@ export default function SetupScreen() {
   };
 
   const handleSave = async () => {
-    const normal = parseInt(normalBPM, 10);
-    const tooFast = parseInt(tooFastBPM, 10);
+    const normal = parseInt(normalHeartRate, 10);
+    const tooFast = parseInt(tooFastHeartRate, 10);
 
     if (isNaN(normal) || normal < 40 || normal > 120) {
       Alert.alert("Invalid value", "Normal BPM must be between 40 and 120.");
       return;
     }
     if (isNaN(tooFast) || tooFast <= normal || tooFast > 200) {
-      Alert.alert(
-        "Invalid value",
-        '"Too fast" BPM must be above Normal BPM and ≤ 200.',
-      );
+      Alert.alert("Invalid value", '"Too fast" BPM must be above Normal BPM and ≤ 200.');
       return;
     }
     if (selectedGenres.length === 0) {
@@ -60,8 +55,8 @@ export default function SetupScreen() {
     setSaving(true);
     try {
       await saveProfile({
-        normalBPM: normal,
-        tooFastBPM: tooFast,
+        normalHeartRate: normal,
+        tooFastHeartRate: tooFast,
         preferredGenres: selectedGenres,
       });
       router.replace("/home" as any);
@@ -73,19 +68,10 @@ export default function SetupScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <ScrollView
-        style={styles.flex}
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-      >
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView style={styles.flex} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>{"Let's personalise\nyour experience"}</Text>
-        <Text style={styles.subtitle}>
-          {"We'll use this to detect when your heart rate is elevated."}
-        </Text>
+        <Text style={styles.subtitle}>{"We'll use this to detect when your heart rate is elevated."}</Text>
 
         {/* BPM Inputs */}
         <View style={styles.card}>
@@ -96,8 +82,8 @@ export default function SetupScreen() {
               <Text style={styles.inputLabel}>Normal BPM</Text>
               <TextInput
                 style={styles.input}
-                value={normalBPM}
-                onChangeText={setNormalBPM}
+                value={normalHeartRate}
+                onChangeText={setNormalHeartRate}
                 keyboardType="number-pad"
                 maxLength={3}
                 placeholderTextColor={Colors.textMuted}
@@ -108,8 +94,8 @@ export default function SetupScreen() {
               <Text style={styles.inputLabel}>Too Fast BPM</Text>
               <TextInput
                 style={styles.input}
-                value={tooFastBPM}
-                onChangeText={setTooFastBPM}
+                value={tooFastHeartRate}
+                onChangeText={setTooFastHeartRate}
                 keyboardType="number-pad"
                 maxLength={3}
                 placeholderTextColor={Colors.textMuted}
@@ -134,22 +120,12 @@ export default function SetupScreen() {
               return (
                 <TouchableOpacity
                   key={genre.id}
-                  style={[
-                    styles.genreChip,
-                    selected && styles.genreChipSelected,
-                  ]}
+                  style={[styles.genreChip, selected && styles.genreChipSelected]}
                   onPress={() => toggleGenre(genre.id)}
                   activeOpacity={0.75}
                 >
                   <Text style={styles.genreEmoji}>{genre.emoji}</Text>
-                  <Text
-                    style={[
-                      styles.genreLabel,
-                      selected && styles.genreLabelSelected,
-                    ]}
-                  >
-                    {genre.label}
-                  </Text>
+                  <Text style={[styles.genreLabel, selected && styles.genreLabelSelected]}>{genre.label}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -162,9 +138,7 @@ export default function SetupScreen() {
           disabled={saving}
           activeOpacity={0.8}
         >
-          <Text style={styles.saveButtonText}>
-            {saving ? "Saving…" : "Save & Continue"}
-          </Text>
+          <Text style={styles.saveButtonText}>{saving ? "Saving…" : "Save & Continue"}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>

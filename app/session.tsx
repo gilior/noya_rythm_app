@@ -18,13 +18,13 @@ import { useMusicSession } from "../hooks/useMusicSession";
 import { musicService } from "../services/MusicService";
 
 export default function SessionScreen() {
-  const { startBPM: startBPMParam } = useLocalSearchParams<{
-    startBPM: string;
+  const { startHeartRate: startHeartRateParam } = useLocalSearchParams<{
+    startHeartRate: string;
   }>();
-  const startBPM = parseInt(startBPMParam ?? "120", 10);
-  console.log(`[Session] startBPMParam (raw): ${startBPMParam} | parsed: ${startBPM}`);
+  const startHeartRate = parseInt(startHeartRateParam ?? "120", 10);
+  console.log(`[Session] startHeartRateParam (raw): ${startHeartRateParam} | parsed: ${startHeartRate}`);
   const { profile, saveSessionStats } = useProfile();
-  const { bpm } = useHeartRate("session", startBPM);
+  const { heartRate } = useHeartRate("session", startHeartRate);
   const sessionState = useMusicSession();
 
   const [completionVisible, setCompletionVisible] = useState(false);
@@ -32,7 +32,7 @@ export default function SessionScreen() {
 
   // Start the music session on mount
   useEffect(() => {
-    musicService.startSession(startBPM);
+    musicService.startSession(startHeartRate);
     return () => {
       // Clean up if user navigates away without ending session
       musicService.endSession();
@@ -40,38 +40,38 @@ export default function SessionScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Feed new BPM readings into the music service
+  // Feed new heart-rate readings into the music service
   useEffect(() => {
-    if (bpm > 0) {
-      musicService.updateBPM(bpm);
+    if (heartRate > 0) {
+      musicService.updateSongBpmPerNewHeartRate(heartRate);
     }
-  }, [bpm]);
+  }, [heartRate]);
 
   // Check completion
   useEffect(() => {
     if (!profile || completedRef.current) return;
-    if (sessionState.peakBPM > profile.normalBPM && musicService.checkCompletion(profile.normalBPM)) {
+    if (sessionState.peakHeartRate > profile.normalHeartRate && musicService.checkCompletion(profile.normalHeartRate)) {
       completedRef.current = true;
       musicService.completeSession();
       setCompletionVisible(true);
     }
-  }, [bpm, profile, sessionState.peakBPM]);
+  }, [heartRate, profile, sessionState.peakHeartRate]);
 
   // BPM bar animation (progress toward normal)
   const progressAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (!profile || startBPM === 0) return;
-    const reference = Math.max(startBPM, sessionState.peakBPM);
+    if (!profile || startHeartRate === 0) return;
+    const reference = Math.max(startHeartRate, sessionState.peakHeartRate);
     const progress =
-      reference <= profile.normalBPM
+      reference <= profile.normalHeartRate
         ? 0
-        : Math.min(1, Math.max(0, (reference - bpm) / (reference - profile.normalBPM)));
+        : Math.min(1, Math.max(0, (reference - heartRate) / (reference - profile.normalHeartRate)));
     Animated.timing(progressAnim, {
       toValue: progress,
       duration: 600,
       useNativeDriver: false,
     }).start();
-  }, [bpm, profile, startBPM, progressAnim]);
+  }, [heartRate, profile, startHeartRate, sessionState.peakHeartRate, progressAnim]);
 
   const handleContinue = () => {
     setCompletionVisible(false);
@@ -82,8 +82,8 @@ export default function SessionScreen() {
     setCompletionVisible(false);
     const stats = musicService.endSession();
     await saveSessionStats({
-      startBPM: stats.startBPM,
-      lowestBPM: stats.lowestBPM,
+      startHeartRate: stats.startHeartRate,
+      lowestHeartRate: stats.lowestHeartRate,
       duration: stats.duration,
       milestonesReached: stats.milestonesReached,
       date: new Date().toISOString(),
@@ -91,8 +91,8 @@ export default function SessionScreen() {
     router.replace({
       pathname: "/summary" as any,
       params: {
-        startBPM: String(stats.startBPM),
-        lowestBPM: String(stats.lowestBPM),
+        startHeartRate: String(stats.startHeartRate),
+        lowestHeartRate: String(stats.lowestHeartRate),
         duration: String(stats.duration),
         milestones: String(stats.milestonesReached),
       },
@@ -102,8 +102,8 @@ export default function SessionScreen() {
   const handleExitManual = async () => {
     const stats = musicService.endSession();
     await saveSessionStats({
-      startBPM: stats.startBPM,
-      lowestBPM: stats.lowestBPM,
+      startHeartRate: stats.startHeartRate,
+      lowestHeartRate: stats.lowestHeartRate,
       duration: stats.duration,
       milestonesReached: stats.milestonesReached,
       date: new Date().toISOString(),
@@ -111,8 +111,8 @@ export default function SessionScreen() {
     router.replace({
       pathname: "/summary" as any,
       params: {
-        startBPM: String(stats.startBPM),
-        lowestBPM: String(stats.lowestBPM),
+        startHeartRate: String(stats.startHeartRate),
+        lowestHeartRate: String(stats.lowestHeartRate),
         duration: String(stats.duration),
         milestones: String(stats.milestonesReached),
       },
@@ -145,11 +145,11 @@ export default function SessionScreen() {
 
         {/* BPM comparison */}
         <View style={styles.bpmRow}>
-          <BPMBlock label="Your Heart" value={bpm} color={Colors.accent} large />
+          <BPMBlock label="Your Heart" value={heartRate} color={Colors.accent} large />
           <View style={styles.bpmDivider} />
           <BPMBlock
             label="Music"
-            value={sessionState.musicBPM > 0 ? sessionState.musicBPM : "—"}
+            value={sessionState.currentSongBPM > 0 ? sessionState.currentSongBPM : "—"}
             color={Colors.primaryLight}
             large
           />
@@ -159,7 +159,7 @@ export default function SessionScreen() {
         <View style={styles.progressSection}>
           <View style={styles.progressLabelRow}>
             <Text style={styles.progressLabel}>Progress to normal</Text>
-            <Text style={styles.progressLabel}>Target: {profile?.normalBPM ?? "—"} BPM</Text>
+            <Text style={styles.progressLabel}>Target: {profile?.normalHeartRate ?? "—"} BPM</Text>
           </View>
           <View style={styles.progressTrack}>
             <Animated.View
@@ -180,6 +180,16 @@ export default function SessionScreen() {
         <View style={styles.milestoneRow}>
           <Text style={styles.milestoneText}>🏅 Milestones reached: {sessionState.milestonesReached}</Text>
         </View>
+
+        {/* Now Playing */}
+        {sessionState.currentSong && (
+          <View style={styles.nowPlayingRow}>
+            <Text style={styles.nowPlayingText} numberOfLines={1}>
+              ♪ {sessionState.currentSong.title}
+              {sessionState.currentSong.bpm != null ? `  ·  ${sessionState.currentSong.bpm} BPM` : ""}
+            </Text>
+          </View>
+        )}
 
         {/* Playback controls */}
         <View style={styles.controls}>
@@ -209,7 +219,7 @@ export default function SessionScreen() {
             <Text style={styles.modalTitle}>🎉 Well done!</Text>
             <Text style={styles.modalBody}>
               Your heart rate is back to normal.{"\n"}
-              Current BPM: <Text style={styles.modalBpm}>{bpm}</Text>
+              Current BPM: <Text style={styles.modalBpm}>{heartRate}</Text>
             </Text>
             <View style={styles.modalButtons}>
               <TouchableOpacity style={styles.modalBtnSecondary} onPress={handleContinue} activeOpacity={0.7}>
@@ -341,6 +351,15 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: Radius.full,
     backgroundColor: Colors.success,
+  },
+  nowPlayingRow: {
+    alignItems: "center",
+    paddingHorizontal: Spacing.md,
+  },
+  nowPlayingText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontStyle: "italic",
   },
   milestoneRow: {
     alignItems: "center",

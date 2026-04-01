@@ -7,13 +7,13 @@ import { heartRateService } from "../services/HeartRateService";
  * @param mode     'idle' for the Home screen, 'session' for the Session screen
  * @param startBPM Initial BPM for session simulation
  */
-export function useHeartRate(mode: "idle" | "session" = "idle", startBPM?: number) {
-  const [bpm, setBpm] = useState<number>(heartRateService.getCurrentBPM());
+export function useHeartRate(mode: "idle" | "session" = "idle", startHeartRate?: number) {
+  const [heartRate, setHeartRate] = useState<number>(heartRateService.getCurrentBPM());
   const [connected, setConnected] = useState(heartRateService.isConnected());
 
   useEffect(() => {
-    heartRateService.startMonitoring(mode, startBPM);
-    const unsubBpm = heartRateService.onBPM(setBpm);
+    heartRateService.startMonitoring(mode, startHeartRate);
+    const unsubBpm = heartRateService.onBPM(setHeartRate);
     const unsubStatus = heartRateService.onStatusChange(setConnected);
 
     return () => {
@@ -24,5 +24,5 @@ export function useHeartRate(mode: "idle" | "session" = "idle", startBPM?: numbe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { bpm, connected };
+  return { heartRate, connected };
 }

@@ -21,21 +21,17 @@ const MAX_GENRES = 3;
 
 export default function SettingsScreen() {
   const { profile, updateProfile } = useProfile();
-  const [normalBPM, setNormalBPM] = useState(String(profile?.normalBPM ?? 70));
-  const [tooFastBPM, setTooFastBPM] = useState(
-    String(profile?.tooFastBPM ?? 100),
-  );
-  const [selectedGenres, setSelectedGenres] = useState<string[]>(
-    profile?.preferredGenres ?? [],
-  );
+  const [normalHeartRate, setNormalHeartRate] = useState(String(profile?.normalHeartRate ?? 70));
+  const [tooFastHeartRate, setTooFastHeartRate] = useState(String(profile?.tooFastHeartRate ?? 100));
+  const [selectedGenres, setSelectedGenres] = useState<string[]>(profile?.preferredGenres ?? []);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   // Sync form if profile loads late
   useEffect(() => {
     if (profile) {
-      setNormalBPM(String(profile.normalBPM));
-      setTooFastBPM(String(profile.tooFastBPM));
+      setNormalHeartRate(String(profile.normalHeartRate));
+      setTooFastHeartRate(String(profile.tooFastHeartRate));
       setSelectedGenres(profile.preferredGenres);
     }
   }, [profile]);
@@ -52,18 +48,15 @@ export default function SettingsScreen() {
   };
 
   const handleSave = async () => {
-    const normal = parseInt(normalBPM, 10);
-    const tooFast = parseInt(tooFastBPM, 10);
+    const normal = parseInt(normalHeartRate, 10);
+    const tooFast = parseInt(tooFastHeartRate, 10);
 
     if (isNaN(normal) || normal < 40 || normal > 120) {
       Alert.alert("Invalid value", "Normal BPM must be between 40 and 120.");
       return;
     }
     if (isNaN(tooFast) || tooFast <= normal || tooFast > 200) {
-      Alert.alert(
-        "Invalid value",
-        '"Too fast" BPM must be above Normal BPM and ≤ 200.',
-      );
+      Alert.alert("Invalid value", '"Too fast" BPM must be above Normal BPM and ≤ 200.');
       return;
     }
     if (selectedGenres.length === 0) {
@@ -74,8 +67,8 @@ export default function SettingsScreen() {
     setSaving(true);
     try {
       await updateProfile({
-        normalBPM: normal,
-        tooFastBPM: tooFast,
+        normalHeartRate: normal,
+        tooFastHeartRate: tooFast,
         preferredGenres: selectedGenres,
       });
       setSaved(true);
@@ -89,10 +82,7 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView
           style={styles.flex}
           contentContainerStyle={styles.container}
@@ -116,8 +106,8 @@ export default function SettingsScreen() {
                 <Text style={styles.inputLabel}>Normal BPM</Text>
                 <TextInput
                   style={styles.input}
-                  value={normalBPM}
-                  onChangeText={setNormalBPM}
+                  value={normalHeartRate}
+                  onChangeText={setNormalHeartRate}
                   keyboardType="number-pad"
                   maxLength={3}
                   placeholderTextColor={Colors.textMuted}
@@ -128,8 +118,8 @@ export default function SettingsScreen() {
                 <Text style={styles.inputLabel}>Too Fast BPM</Text>
                 <TextInput
                   style={styles.input}
-                  value={tooFastBPM}
-                  onChangeText={setTooFastBPM}
+                  value={tooFastHeartRate}
+                  onChangeText={setTooFastHeartRate}
                   keyboardType="number-pad"
                   maxLength={3}
                   placeholderTextColor={Colors.textMuted}
@@ -153,22 +143,12 @@ export default function SettingsScreen() {
                 return (
                   <TouchableOpacity
                     key={genre.id}
-                    style={[
-                      styles.genreChip,
-                      selected && styles.genreChipSelected,
-                    ]}
+                    style={[styles.genreChip, selected && styles.genreChipSelected]}
                     onPress={() => toggleGenre(genre.id)}
                     activeOpacity={0.75}
                   >
                     <Text style={styles.genreEmoji}>{genre.emoji}</Text>
-                    <Text
-                      style={[
-                        styles.genreLabel,
-                        selected && styles.genreLabelSelected,
-                      ]}
-                    >
-                      {genre.label}
-                    </Text>
+                    <Text style={[styles.genreLabel, selected && styles.genreLabelSelected]}>{genre.label}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -180,38 +160,21 @@ export default function SettingsScreen() {
             <View style={styles.card}>
               <Text style={styles.sectionLabel}>Last Session</Text>
               <View style={styles.lastSessionRow}>
-                <LastStat
-                  label="Start"
-                  value={`${profile.lastSessionStats.startBPM} bpm`}
-                />
-                <LastStat
-                  label="Lowest"
-                  value={`${profile.lastSessionStats.lowestBPM} bpm`}
-                />
-                <LastStat
-                  label="Duration"
-                  value={formatDuration(profile.lastSessionStats.duration)}
-                />
-                <LastStat
-                  label="Milestones"
-                  value={String(profile.lastSessionStats.milestonesReached)}
-                />
+                <LastStat label="Start" value={`${profile.lastSessionStats.startHeartRate} bpm`} />
+                <LastStat label="Lowest" value={`${profile.lastSessionStats.lowestHeartRate} bpm`} />
+                <LastStat label="Duration" value={formatDuration(profile.lastSessionStats.duration)} />
+                <LastStat label="Milestones" value={String(profile.lastSessionStats.milestonesReached)} />
               </View>
             </View>
           )}
 
           <TouchableOpacity
-            style={[
-              styles.saveButton,
-              (saving || saved) && styles.saveButtonAlt,
-            ]}
+            style={[styles.saveButton, (saving || saved) && styles.saveButtonAlt]}
             onPress={handleSave}
             disabled={saving || saved}
             activeOpacity={0.8}
           >
-            <Text style={styles.saveButtonText}>
-              {saved ? "✓ Saved" : saving ? "Saving…" : "Save Settings"}
-            </Text>
+            <Text style={styles.saveButtonText}>{saved ? "✓ Saved" : saving ? "Saving…" : "Save Settings"}</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>

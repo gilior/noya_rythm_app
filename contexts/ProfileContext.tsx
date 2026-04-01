@@ -1,18 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, {
-    createContext,
-    useCallback,
-    useContext,
-    useEffect,
-    useState,
-} from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { SessionStats, UserProfile } from "../types";
 
 const PROFILE_KEY = "@noya_profile";
 
 export const DEFAULT_PROFILE: UserProfile = {
-  normalBPM: 70,
-  tooFastBPM: 100,
+  normalHeartRate: 70,
+  tooFastHeartRate: 100,
   preferredGenres: [],
 };
 
@@ -58,9 +52,9 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       const updated: UserProfile = {
         ...profile,
         lastSessionStats: stats,
-        bpmHistory: [
-          ...(profile.bpmHistory ?? []).slice(-99),
-          { value: stats.startBPM, timestamp: Date.now() },
+        heartRateHistory: [
+          ...(profile.heartRateHistory ?? []).slice(-99),
+          { value: stats.startHeartRate, timestamp: Date.now() },
         ],
       };
       await saveProfile(updated);

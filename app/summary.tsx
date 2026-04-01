@@ -19,25 +19,22 @@ function formatDuration(seconds: number): string {
 }
 
 export default function SummaryScreen() {
-  const { startBPM, lowestBPM, duration, milestones } = useLocalSearchParams<{
-    startBPM: string;
-    lowestBPM: string;
+  const { startHeartRate, lowestHeartRate, duration, milestones } = useLocalSearchParams<{
+    startHeartRate: string;
+    lowestHeartRate: string;
     duration: string;
     milestones: string;
   }>();
 
-  const start = parseInt(startBPM ?? "0", 10);
-  const lowest = parseInt(lowestBPM ?? "0", 10);
+  const start = parseInt(startHeartRate ?? "0", 10);
+  const lowest = parseInt(lowestHeartRate ?? "0", 10);
   const dur = parseInt(duration ?? "0", 10);
   const miles = parseInt(milestones ?? "0", 10);
   const dropPct = start > 0 ? Math.round(((start - lowest) / start) * 100) : 0;
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView
-        contentContainerStyle={styles.container}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Text style={styles.emoji}>🎉</Text>
         <Text style={styles.title}>Session Complete</Text>
         <Text style={styles.subtitle}>
@@ -50,23 +47,9 @@ export default function SummaryScreen() {
 
         {/* Stats grid */}
         <View style={styles.statsGrid}>
-          <StatCard
-            label="Start BPM"
-            value={start}
-            unit="bpm"
-            color={Colors.danger}
-          />
-          <StatCard
-            label="Lowest BPM"
-            value={lowest}
-            unit="bpm"
-            color={Colors.success}
-          />
-          <StatCard
-            label="Duration"
-            value={formatDuration(dur)}
-            color={Colors.primaryLight}
-          />
+          <StatCard label="Start BPM" value={start} unit="bpm" color={Colors.danger} />
+          <StatCard label="Lowest BPM" value={lowest} unit="bpm" color={Colors.success} />
+          <StatCard label="Duration" value={formatDuration(dur)} color={Colors.primaryLight} />
           <StatCard
             label="Milestones"
             value={miles}
@@ -97,11 +80,7 @@ export default function SummaryScreen() {
           </View>
         )}
 
-        <TouchableOpacity
-          style={styles.homeBtn}
-          onPress={() => router.replace("/home" as any)}
-          activeOpacity={0.8}
-        >
+        <TouchableOpacity style={styles.homeBtn} onPress={() => router.replace("/home" as any)} activeOpacity={0.8}>
           <Text style={styles.homeBtnText}>Back to Home</Text>
         </TouchableOpacity>
       </ScrollView>

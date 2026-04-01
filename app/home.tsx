@@ -17,7 +17,7 @@ import { useHeartRate } from "../hooks/useHeartRate";
 
 export default function HomeScreen() {
   const { profile } = useProfile();
-  const { bpm, connected } = useHeartRate("idle");
+  const { heartRate, connected } = useHeartRate("idle");
   const [alertVisible, setAlertVisible] = useState(false);
   const alertShownRef = useRef(false);
 
@@ -27,7 +27,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (pulseRef.current) pulseRef.current.stop();
-    const interval = bpm > 0 ? (60 / bpm) * 1000 : 1000;
+    const interval = heartRate > 0 ? (60 / heartRate) * 1000 : 1000;
     const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
@@ -45,35 +45,35 @@ export default function HomeScreen() {
     pulseRef.current = animation;
     animation.start();
     return () => animation.stop();
-  }, [bpm, pulseAnim]);
+  }, [heartRate, pulseAnim]);
 
   // Trigger high-BPM alert (once per spike)
   useEffect(() => {
     if (!profile) return;
-    if (bpm > profile.tooFastBPM && !alertShownRef.current) {
+    if (heartRate > profile.tooFastHeartRate && !alertShownRef.current) {
       alertShownRef.current = true;
       setAlertVisible(true);
     }
-    if (bpm <= profile.tooFastBPM) {
+    if (heartRate <= profile.tooFastHeartRate) {
       alertShownRef.current = false;
     }
-  }, [bpm, profile]);
+  }, [heartRate, profile]);
 
   const bpmColor =
-    !profile || bpm === 0
+    !profile || heartRate === 0
       ? Colors.textMuted
-      : bpm > profile.tooFastBPM
+      : heartRate > profile.tooFastHeartRate
         ? Colors.danger
-        : bpm > profile.normalBPM
+        : heartRate > profile.normalHeartRate
           ? Colors.warning
           : Colors.success;
 
   const statusText =
-    !profile || bpm === 0
+    !profile || heartRate === 0
       ? "Connecting…"
-      : bpm > profile.tooFastBPM
+      : heartRate > profile.tooFastHeartRate
         ? "Heart rate elevated"
-        : bpm > profile.normalBPM
+        : heartRate > profile.normalHeartRate
           ? "Slightly elevated"
           : "Heart rate normal";
 
@@ -81,7 +81,7 @@ export default function HomeScreen() {
     setAlertVisible(false);
     router.push({
       pathname: "/session" as any,
-      params: { startBPM: String(bpm) },
+      params: { startHeartRate: String(heartRate) },
     });
   };
 
@@ -103,75 +103,47 @@ export default function HomeScreen() {
         {/* Connection indicator */}
         {!connected && (
           <View style={styles.disconnectedBanner}>
-            <Text style={styles.disconnectedText}>
-              ⚠️ Wearable disconnected
-            </Text>
+            <Text style={styles.disconnectedText}>⚠️ Wearable disconnected</Text>
           </View>
         )}
 
         {/* BPM Display */}
         <View style={styles.bpmSection}>
-          <Animated.View
-            style={[styles.pulseRing, { transform: [{ scale: pulseAnim }] }]}
-          />
+          <Animated.View style={[styles.pulseRing, { transform: [{ scale: pulseAnim }] }]} />
           <View style={styles.bpmCard}>
-            <Text style={[styles.bpmValue, { color: bpmColor }]}>
-              {bpm > 0 ? bpm : "—"}
-            </Text>
+            <Text style={[styles.bpmValue, { color: bpmColor }]}>{heartRate > 0 ? heartRate : "—"}</Text>
             <Text style={styles.bpmUnit}>BPM</Text>
           </View>
         </View>
 
-        <Text style={[styles.statusText, { color: bpmColor }]}>
-          {statusText}
-        </Text>
+        <Text style={[styles.statusText, { color: bpmColor }]}>{statusText}</Text>
 
         {/* Thresholds */}
         {profile && (
           <View style={styles.thresholdRow}>
-            <ThresholdPill
-              label="Normal"
-              value={profile.normalBPM}
-              color={Colors.success}
-            />
-            <ThresholdPill
-              label="Alert"
-              value={profile.tooFastBPM}
-              color={Colors.danger}
-            />
+            <ThresholdPill label="Normal" value={profile.normalHeartRate} color={Colors.success} />
+            <ThresholdPill label="Alert" value={profile.tooFastHeartRate} color={Colors.danger} />
           </View>
         )}
 
         {/* Actions */}
         <View style={styles.actions}>
-          <TouchableOpacity
-            style={styles.startBtn}
-            onPress={startSession}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity style={styles.startBtn} onPress={startSession} activeOpacity={0.8}>
             <Text style={styles.startBtnText}>Start Session</Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.monitoringNote}>
-          Monitoring every 6 s · App must stay open
-        </Text>
+        <Text style={styles.monitoringNote}>Monitoring every 6 s · App must stay open</Text>
       </View>
 
       {/* High BPM Alert Modal */}
-      <Modal
-        visible={alertVisible}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-      >
+      <Modal visible={alertVisible} transparent animationType="fade" statusBarTranslucent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>❤️ Heart Rate Alert</Text>
-            <Text style={styles.modalBpm}>{bpm} BPM</Text>
+            <Text style={styles.modalBpm}>{heartRate} BPM</Text>
             <Text style={styles.modalBody}>
-              Your heart rate is above your alert threshold (
-              {profile?.tooFastBPM} BPM).
+              Your heart rate is above your alert threshold ({profile?.tooFastHeartRate} BPM).
               {"\n\n"}Start a calming music session?
             </Text>
             <View style={styles.modalButtons}>
@@ -182,11 +154,7 @@ export default function HomeScreen() {
               >
                 <Text style={styles.modalBtnSecondaryText}>Not now</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalBtnPrimary}
-                onPress={startSession}
-                activeOpacity={0.8}
-              >
+              <TouchableOpacity style={styles.modalBtnPrimary} onPress={startSession} activeOpacity={0.8}>
                 <Text style={styles.modalBtnPrimaryText}>Start Session</Text>
               </TouchableOpacity>
             </View>
@@ -197,15 +165,7 @@ export default function HomeScreen() {
   );
 }
 
-function ThresholdPill({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number;
-  color: string;
-}) {
+function ThresholdPill({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <View style={[styles.pill, { borderColor: color }]}>
       <Text style={[styles.pillLabel, { color }]}>{label}</Text>
