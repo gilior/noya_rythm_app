@@ -141,8 +141,24 @@ def run_pipeline(lib_dir: Path) -> None:
     if not lib_dir.exists():
         raise FileNotFoundError(f"Library directory not found: {lib_dir}")
 
+    # Output goes to lib_output/ sibling of the input folder
+    output_dir  = lib_dir.parent / "lib_output"
+    output_file = output_dir / "songs.json"
+    output_dir.mkdir(exist_ok=True)
+
+    # Load existing output for skip-detection (keyed by video id)
+    existing: dict[str, dict] = {}
+    if output_file.exists():
+        try:
+            for entry in json.loads(output_file.read_text(encoding="utf-8")):
+                if isinstance(entry, dict) and "id" in entry:
+                    existing[entry["id"]] = entry
+        except Exception as exc:
+            log.warning(f"Could not load existing output ({output_file}): {exc}")
+
     r2 = _r2_client()
-    totals = {"ok": 0, "skip": 0, "err": 0}
+    totals   = {"ok": 0, "skip": 0, "err": 0}
+    all_songs: list[dict] = []
 
     for json_file in sorted(lib_dir.glob("*.json")):
         genre = json_file.stem  # filename == genre id, e.g. "lofi", "jazz"
@@ -154,23 +170,35 @@ def run_pipeline(lib_dir: Path) -> None:
             log.error(f"  Cannot read {json_file.name}: {exc}")
             continue
 
-        modified = False
-
         with tempfile.TemporaryDirectory() as tmp_dir:
             for song in songs:
                 if not isinstance(song, dict) or "id" not in song:
                     continue
 
-                vid     = song["id"]
-                title   = song.get("title", vid)
+                vid   = song["id"]
+                title = song.get("title", vid)
 
-                existing_bpm = str(song.get("BPM", "")).strip()
-                existing_url = str(song.get("audio_url", "")).strip()
+                # Build the output entry from the origin fields + genre tag.
+                # BPM and audio_url are stripped from the origin spread so they
+                # only ever come from the pipeline result or the cached output.
+                # They are intentionally NOT written back to the origin files —
+                # they live exclusively in lib_output/songs.json.
+                out_entry = {
+                    k: v for k, v in song.items()
+                    if k not in ("BPM", "audio_url")
+                }
+                out_entry["genre"] = genre
 
-                if existing_bpm and existing_bpm != "Error" and existing_url:
-                    log.info(f"  [{vid}] skip — already processed")
-                    totals["skip"] += 1
-                    continue
+                # Check the existing output file for already-processed tracks
+                cached = existing.get(vid)
+                if cached:
+                    cached_bpm = str(cached.get("BPM", "")).strip()
+                    cached_url = str(cached.get("audio_url", "")).strip()
+                    if cached_bpm and cached_bpm != "Error" and cached_url:
+                        log.info(f"  [{vid}] skip — already processed")
+                        all_songs.append(cached)
+                        totals["skip"] += 1
+                        continue
 
                 log.info(f"  [{vid}] {title[:60]}")
                 try:
@@ -185,24 +213,23 @@ def run_pipeline(lib_dir: Path) -> None:
 
                     log.info(f"  [{vid}] ✅  {bpm} BPM — {audio_url}")
 
-                    song["BPM"]       = str(bpm)
-                    song["audio_url"] = audio_url
-                    modified = True
+                    out_entry["BPM"]       = str(bpm)
+                    out_entry["audio_url"] = audio_url
                     totals["ok"] += 1
 
                 except Exception as exc:
                     log.error(f"  [{vid}] ❌  {exc}")
-                    song["BPM"] = "Error"
-                    modified = True
+                    out_entry["BPM"] = "Error"
                     totals["err"] += 1
 
-        if modified:
-            # Update local JSON
-            json_file.write_text(
-                json.dumps(songs, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-            log.info(f"  → saved {json_file.name}")
+                all_songs.append(out_entry)
+
+    # Write single combined output — all genres, all songs, one file
+    output_file.write_text(
+        json.dumps(all_songs, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    log.info(f"  → saved {output_file}")
 
     print(f"\n{'─' * 50}")
     print(f"✅  Success : {totals['ok']}")
