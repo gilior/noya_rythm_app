@@ -36,6 +36,7 @@ export interface SessionState {
   startTime: number;
   isPlaying: boolean;
   message: string;
+  currentSong: { title: string; bpm: number | null } | null;
 }
 
 type StateChangeCallback = (state: SessionState) => void;
@@ -55,6 +56,7 @@ const ADAPT_INTERVAL_MS = 10_000;
 
 class MusicService {
   private currentRate = 1.0;
+  private currentSongNativeBpm = 0;
   private state: SessionState = this.defaultState();
   private listeners: Set<StateChangeCallback> = new Set();
   private sound: Audio.Sound | null = null;
@@ -110,9 +112,9 @@ class MusicService {
       message = "Adapting music to your new rhythm…";
       this.loadLoop(newMusicBPM); // fire-and-forget
     } else {
-      // Minor change: small tempo adjustment
-      newMusicBPM = Math.round(this.state.musicBPM - this.state.musicBPM * relativeChange * 0.5);
-      this.adjustTempo(newMusicBPM);
+      // Minor change: small tempo adjustment via playback rate
+      const adjustTarget = Math.round(this.state.musicBPM - this.state.musicBPM * relativeChange * 0.5);
+      newMusicBPM = this.adjustTempo(adjustTarget);
     }
 
     const peakBPM = Math.max(this.state.peakBPM, newBPM);
@@ -158,15 +160,19 @@ class MusicService {
   }
 
   continuePlaying(): void {
-    // Switch to calming mode (≤ 80 BPM)
+    const targetBPM = Math.max(50, Math.round(this.state.currentBPM || this.state.musicBPM || this.state.startBPM));
+
     this.setState({
       ...this.state,
       phase: "slowing",
-      musicBPM: 75,
+      musicBPM: targetBPM,
       isPlaying: true,
       message: "Enjoy some calming music…",
     });
-    // this.loadLoop(75);
+
+    this.sound?.playAsync().catch(() => null);
+    this.startAdaptLoop();
+    this.loadLoop(targetBPM).catch(() => null);
   }
 
   /** Returns session summary and resets internal state */
@@ -232,6 +238,7 @@ class MusicService {
       startTime: 0,
       isPlaying: false,
       message: "",
+      currentSong: null,
     };
   }
 
@@ -269,12 +276,20 @@ class MusicService {
     // Pick a song from the catalog that matches the target BPM (±10 BPM).
     // Falls back to a wider search across all genres if nothing is found.
     const song =
-      songCatalogService.pickRandomSong({ targetBpm: 95, bpmTolerance: 10 }) ?? songCatalogService.pickRandomSong();
+      songCatalogService.pickRandomSong({ targetBpm: bpm, bpmTolerance: 10 }) ?? songCatalogService.pickRandomSong();
 
     if (!song) {
       console.warn("No matching song found for BPM:", bpm);
       return;
     }
+
+    this.currentSongNativeBpm = song.bpm ?? bpm;
+    this.currentRate = 1.0;
+    this.setState({
+      ...this.state,
+      currentSong: { title: song.title, bpm: song.bpm },
+      musicBPM: Math.round(this.currentSongNativeBpm),
+    });
 
     if (!song.audioUrl) {
       console.warn("MusicService: song has no audioUrl, skipping:", song.id);
@@ -305,21 +320,19 @@ class MusicService {
    * Adjusts the playback rate to approximate a tempo change.
    * True pitch-preserving time-stretch requires a native DSP module.
    */
-  private adjustTempo(targetBPM: number): void {
-    if (!this.sound || this.state.musicBPM === 0) return;
+  private adjustTempo(targetBPM: number): number {
+    if (!this.sound || this.currentSongNativeBpm === 0) return this.state.musicBPM;
 
-    const rate = targetBPM / this.state.musicBPM;
+    const rate = targetBPM / this.currentSongNativeBpm;
     const clampedRate = Math.min(2.0, Math.max(0.5, rate));
 
-    // Skip if change is less than 3% — avoids glitching for noise-level variations
-    // if (Math.abs(clampedRate - this.currentRate) < 0.03) return;
-
     console.log(
-      `[]MusicService [adjustTempo] musicBPM=${this.state.musicBPM} target=${targetBPM} rate=${clampedRate.toFixed(3)}`,
+      `[MusicService] [adjustTempo] nativeBPM=${this.currentSongNativeBpm} target=${targetBPM} rate=${clampedRate.toFixed(3)}`,
     );
 
     this.currentRate = clampedRate;
     this.sound.setRateAsync(clampedRate, true).catch(() => null);
+    return Math.round(this.currentSongNativeBpm * clampedRate);
   }
 
   private async stopAudio(): Promise<void> {
