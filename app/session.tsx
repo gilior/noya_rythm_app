@@ -22,7 +22,6 @@ export default function SessionScreen() {
     startHeartRate: string;
   }>();
   const startHeartRate = parseInt(startHeartRateParam ?? "120", 10);
-  console.log(`[Session] startHeartRateParam (raw): ${startHeartRateParam} | parsed: ${startHeartRate}`);
   const { profile, saveSessionStats } = useProfile();
   const { heartRate } = useHeartRate("session", startHeartRate);
   const sessionState = useMusicSession();
@@ -32,7 +31,7 @@ export default function SessionScreen() {
 
   // Start the music session on mount
   useEffect(() => {
-    musicService.startSession(startHeartRate);
+    musicService.startSession(startHeartRate, profile?.preferredGenres ?? []);
     return () => {
       // Clean up if user navigates away without ending session
       musicService.endSession();
