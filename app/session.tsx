@@ -75,7 +75,7 @@ export default function SessionScreen() {
 
   const handleContinue = () => {
     setCompletionVisible(false);
-    musicService.continuePlaying();
+    musicService.continuePlaying(profile?.normalHeartRate ?? 70);
   };
 
   const handleEnd = async () => {

@@ -2,10 +2,10 @@
 
 To avoid ambiguity, this spec uses these terms consistently throughout:
 
-| Term           | Definition                                                                                                              |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| **Heart rate** | The user's cardiac rhythm, measured in beats per minute. Comes from a wearable or device health API.                   |
-| **Song tempo** | The musical pace of a track or loop, measured in beats per minute. Controlled by the Music Service.                    |
+| Term           | Definition                                                                                           |
+| -------------- | ---------------------------------------------------------------------------------------------------- |
+| **Heart rate** | The user's cardiac rhythm, measured in beats per minute. Comes from a wearable or device health API. |
+| **Song tempo** | The musical pace of a track or loop, measured in beats per minute. Controlled by the Music Service.  |
 
 ---
 
@@ -131,18 +131,21 @@ Purpose: synchronize and slow heart rate using music
 
 ### **Loop Strategy**
 
-- Use **short loops (30–60 seconds)**
-- Always crossfade between loops
+- Songs are played sequentially, transitioning at natural end points
+- Always crossfade between songs
 
 ### **Hybrid Music Source**
 
-1. Pre-generated loops:
-   - Song tempo range: 70–100
-   - Stored locally
+All music comes from a **pre-catalogued library of audio files**. Each song in the catalog has:
 
-2. AI-generated loops:
-   - For song tempos outside that range
-   - Generated on demand
+- `id` — unique identifier
+- `genre` — music genre (e.g., ambient, lofi, classical)
+- `title` — song name
+- `channel` — source channel name
+- `songTempo` — the song's tempo in beats per minute
+- `audioUrl` — URL to the hosted audio file
+
+Songs are selected from this catalog by matching `songTempo` to the target range and filtering by the user's `preferredGenres`.
 
 ---
 
@@ -151,24 +154,30 @@ Purpose: synchronize and slow heart rate using music
 ### **Step 1 – Initial Sync**
 
 - Read current heart rate (e.g., 150)
-- Select a loop whose song tempo falls within 95%–100% of the current heart rate
-  - Example: for heart rate of 150 → select song tempo 143–150
-
+- Select a song from the catalog whose song tempo falls within 95%–100% of the current heart rate
+  - Example: for heart rate of 150 → select a song with song tempo 143–150
+  - Rounding rule: lower bound (95% of HR) rounds **up** (`Math.ceil`) if not an integer
+- Song tempo must **never exceed** the current heart rate — no song faster than the user's heart may be played
+- If no exact match exists, select the closest available song tempo in the catalog
 - Start playback
 
 ---
 
 ### **Step 2 – Continuous Adaptation**
 
-Every loop end or every 2 minutes:
+Every song end or every 2 minutes:
 
 #### Case A: Heart rate change < 5%
 
-- Adjust song tempo of current loop slightly
+- Do **not** switch songs — adapt the current song's playback speed to match the new target tempo (tempo-stretch within ±5% of the song's native BPM)
 
 #### Case B: Heart rate change ≥ 5%
 
-- Generate/select a new loop at the new target song tempo range
+- Select a new song from the catalog at the updated target song tempo range (95%–100% of the new heart rate)
+
+#### Case C: Synchronization occurs and heart rate has slowed
+
+- Return to **Step 3** and select music at 90%–95% of the new (lower) heart rate to continue the slow-down
 
 ---
 
@@ -179,6 +188,9 @@ After sync:
 - Target song tempo = 90%–95% of current heart rate
 - Example:
   - Heart rate of 150 → target song tempo 135–142
+- Rounding rules:
+  - Lower bound (90% of HR) → round **up** (`Math.ceil`) if not an integer
+  - Upper bound (95% of HR) → round **down** (`Math.floor`) if not an integer
 
 ---
 
@@ -198,7 +210,7 @@ If heart rate ≤ `normalHeartRate`:
   - "Well done. Your heart rate is back to normal"
 
 - Options:
-  - Continue → play calming music (song tempo ≤80)
+  - Continue → play a calming song from the catalog with song tempo ≤ `min(normalHeartRate, 80)`
   - Exit → go to Summary
 
 ---
@@ -251,13 +263,14 @@ If heart rate ≤ `normalHeartRate`:
 
 ### Responsibilities:
 
-- Select or generate loops based on current heart rate
+- Select songs from the catalog based on current heart rate and user's preferred genres
 - Handle:
-  - Minor song tempo adjustments (heart rate change <5%)
-  - New loop generation (heart rate change ≥5%)
+  - Adjusting playback speed of the current song by up to ±5% to adapt tempo without switching tracks (for heart rate change < 5%)
+  - Selecting a new song at a lower song tempo range (heart rate change ≥5%)
 
-- Crossfade transitions
-- Cache generated loops if needed
+- Enforce that no selected song tempo ever exceeds the user's current heart rate
+- Crossfade transitions between songs
+- Track which songs have already been played to avoid immediate repeats
 
 ---
 
@@ -273,7 +286,7 @@ If heart rate ≤ `normalHeartRate`:
 ## **Edge Cases**
 
 - Device disconnected → pause session + notify
-- No loop available → fallback to calming loop with song tempo ≤80
+- No song available at the target song tempo range → fallback to the nearest available song tempo in the catalog; if none, play a calming song with song tempo ≤80
 - App closed → no heart rate monitoring (user must reopen)
 - Sudden heart rate spikes → show warning
 
