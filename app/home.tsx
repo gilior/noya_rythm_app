@@ -1,15 +1,16 @@
+import { useIsFocused } from "@react-navigation/native";
 import { router } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    Animated,
-    Modal,
-    Platform,
-    StatusBar as RNStatusBar,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Modal,
+  Platform,
+  StatusBar as RNStatusBar,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { Colors, Radius, Spacing } from "../constants/theme";
 import { useProfile } from "../contexts/ProfileContext";
@@ -20,6 +21,7 @@ export default function HomeScreen() {
   const { heartRate, connected } = useHeartRate("idle");
   const [alertVisible, setAlertVisible] = useState(false);
   const alertShownRef = useRef(false);
+  const isFocused = useIsFocused();
 
   // Pulse animation synced to BPM
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -47,17 +49,26 @@ export default function HomeScreen() {
     return () => animation.stop();
   }, [heartRate, pulseAnim]);
 
-  // Trigger high-BPM alert (once per spike)
+  // Trigger high-BPM alert (once per spike, only when this screen is in the foreground)
   useEffect(() => {
-    if (!profile) return;
+    if (!profile || !isFocused) return;
     if (heartRate > profile.tooFastHeartRate && !alertShownRef.current) {
       alertShownRef.current = true;
       setAlertVisible(true);
     }
     if (heartRate <= profile.tooFastHeartRate) {
       alertShownRef.current = false;
+      setAlertVisible(false);
     }
-  }, [heartRate, profile]);
+  }, [heartRate, profile, isFocused]);
+
+  // Dismiss any stale alert when the session screen is pushed on top
+  useEffect(() => {
+    if (!isFocused) {
+      setAlertVisible(false);
+      alertShownRef.current = false;
+    }
+  }, [isFocused]);
 
   const bpmColor =
     !profile || heartRate === 0

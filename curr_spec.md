@@ -151,50 +151,61 @@ Songs are selected from this catalog by matching `songTempo` to the target range
 
 ## **Synchronization Logic**
 
-### **Step 1 – Initial Sync**
+### **Step 1 – Sync Phase**
+
+Target song tempo = 95–100% of current heart rate. This phase runs from session start until sync is confirmed (heart rate has begun to slow).
+
+**Initial song selection:**
 
 - Read current heart rate (e.g., 150)
 - Select a song from the catalog whose song tempo falls within 95%–100% of the current heart rate
   - Example: for heart rate of 150 → select a song with song tempo 143–150
-  - Rounding rule: lower bound (95% of HR) rounds **up** (`Math.ceil`) if not an integer
-- Song tempo must **never exceed** the current heart rate — no song faster than the user's heart may be played
+  - Rounding rule: lower bound (95% of HR) rounds **up** (\Math.ceil\) if not an integer
+- Song tempo must **never exceed** the current heart rate — no song faster than the user’s heart may be played
 - If no exact match exists, select the closest available song tempo in the catalog
 - Start playback
 
----
-
-### **Step 2 – Continuous Adaptation**
-
-Every song end or every 2 minutes:
+**Ongoing adaptation (every song end or every 2 minutes):**
 
 #### Case A: Heart rate change < 5%
 
-- Do **not** switch songs — adapt the current song's playback speed to match the new target tempo (tempo-stretch within ±5% of the song's native BPM)
+- Do **not** switch songs — adapt the current song’s playback speed to match the new target tempo (tempo-stretch within ±5% of the song’s native BPM)
 
 #### Case B: Heart rate change ≥ 5%
 
 - Select a new song from the catalog at the updated target song tempo range (95%–100% of the new heart rate)
 
-#### Case C: Synchronization occurs and heart rate has slowed
-
-- Return to **Step 3** and select music at 90%–95% of the new (lower) heart rate to continue the slow-down
+**Transition to Step 2:** Once synchronization is confirmed and heart rate has begun to slow, show the message “Your heart and music are now in sync — let’s try to slow your heart” and enter **Step 2**.
 
 ---
 
-### **Step 3 – Slow Down Phase**
+### **Step 2 – Slow Down Phase**
 
-After sync:
+Entered after sync is confirmed. Target song tempo = 90%–95% of current heart rate. This phase runs until heart rate reaches ormalHeartRate\.
 
-- Target song tempo = 90%–95% of current heart rate
-- Example:
-  - Heart rate of 150 → target song tempo 135–142
-- Rounding rules:
-  - Lower bound (90% of HR) → round **up** (`Math.ceil`) if not an integer
-  - Upper bound (95% of HR) → round **down** (`Math.floor`) if not an integer
+**Initial song selection:**
+
+- Select a song from the catalog at 90%–95% of the current (now lower) heart rate
+  - Example: for heart rate of 150 → select a song with song tempo 135–142
+  - Rounding rules:
+    - Lower bound (90% of HR) → round **up** (\Math.ceil\) if not an integer
+    - Upper bound (95% of HR) → round **down** (\Math.floor\) if not an integer
+
+**Ongoing adaptation (every song end or every 2 minutes):**
+
+#### Case A: Heart rate change < 5%
+
+- Do **not** switch songs — adapt the current song’s playback speed to stay within the 90%–95% target range
+
+#### Case B: Heart rate change ≥ 5%
+
+- Select a new song from the catalog at 90%–95% of the updated heart rate
+
+**Re-sync:** If heart rate has slowed further and sync is re-confirmed, repeat Step 2 targeting 90%–95% of the new (lower) heart rate.
 
 ---
 
-### **Step 4 – Feedback**
+### **Step 3 – Feedback**
 
 - Every 10% drop in heart rate from peak heart rate:
   - Show message:
@@ -202,17 +213,15 @@ After sync:
 
 ---
 
-### **Step 5 – Completion**
+### **Step 4 – Completion**
 
-If heart rate ≤ `normalHeartRate`:
+If heart rate ≤ ormalHeartRate\:
 
 - Show popup:
-  - "Well done. Your heart rate is back to normal"
+  - “Well done. Your heart rate is back to normal”
 
 - Options:
-  - Continue → play a calming song from the catalog with song tempo ≤ `min(normalHeartRate, 80)`
-  - Exit → go to Summary
-
+  - Continue → play a calming song from the catalog with song tempo ≤ \min(normalHeartRate, 80)  - Exit → go to Summary
 ---
 
 ## **4. Summary Screen**

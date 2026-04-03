@@ -49,9 +49,6 @@ class MusicService {
     });
 
     this.playingFallCount = 0;
-    console.log(
-      `[Session] START  initialHR=${initialHeartRate}  syncRange=[${Math.ceil(initialHeartRate * 0.95)}, ${initialHeartRate}]`,
-    );
 
     // Initial sync: select a song at 95%–100% of HR — never faster than the user's heart (spec Step 1)
     await this.loadSong(initialHeartRate, {
@@ -69,8 +66,6 @@ class MusicService {
       message: "Your heart and music are now in sync",
     });
 
-    console.log(`[Session] PHASE → playing  songBPM=${this.state.currentSongBPM}`);
-
     this.sound?.playAsync().catch(() => null);
 
     this.startSyncSongFlow();
@@ -83,111 +78,12 @@ class MusicService {
     const prevHeartRate = this.state.currentHeartRate;
     const peakHeartRate = Math.max(this.state.peakHeartRate, heartRate);
     const hrChange = Math.abs(heartRate - prevHeartRate) / prevHeartRate;
-    console.log(
-      `[Session] HR_READ  hr=${heartRate}  prev=${prevHeartRate}  change=${(hrChange * 100).toFixed(1)}%  phase=${this.state.phase}`,
-    );
-    let { milestonesReached, message } = this.state;
-    let nextMilestoneAt = this.nextMilestoneAt;
-
-    if (heartRate <= nextMilestoneAt && nextMilestoneAt > 0) {
-      milestonesReached++;
-      nextMilestoneAt = nextMilestoneAt * (1 - MILESTONE_DROP_RATIO);
-      const dropPct = Math.round((1 - heartRate / peakHeartRate) * 100);
-      message = `Great job! Your heart slowed by ${dropPct}% 💫`;
-    }
-
-    this.nextMilestoneAt = nextMilestoneAt;
+    const { milestonesReached, message } = this.computeMilestoneUpdate(heartRate, peakHeartRate);
 
     if (this.state.phase === "playing") {
-      // ── Step 2: still in sync phase — keep music matched to HR at 95%–100% ──
-      this.setState({
-        ...this.state,
-        currentHeartRate: heartRate,
-        peakHeartRate,
-        milestonesReached,
-        message,
-      });
-
-      if (!this.isLoadingLoop) {
-        const syncMinBpm = Math.ceil(heartRate * 0.95);
-        const syncMaxBpm = heartRate;
-        const targetSongBPM = Math.round((syncMinBpm + syncMaxBpm) / 2);
-        const effectiveSongBPM = this.state.currentSongBPM > 0 ? this.state.currentSongBPM : this.originSongBPM;
-        const relativeSongBpmChange =
-          effectiveSongBPM > 0 ? Math.abs(targetSongBPM - effectiveSongBPM) / effectiveSongBPM : 1;
-
-        if (hrChange >= MINOR_CHANGE_THRESHOLD) {
-          // Case B: HR changed ≥5% — load a new song at the updated sync range
-          console.log(
-            `[Session] SYNC Case B  hrChange=${(hrChange * 100).toFixed(1)}% ≥5%  newSyncRange=[${syncMinBpm}, ${syncMaxBpm}]  loadingNewSong`,
-          );
-          this.setState({ ...this.state, message: "Re-syncing to your heartbeat…" });
-          this.loadSong(targetSongBPM, { minBpm: syncMinBpm, maxBpm: syncMaxBpm }); // fire-and-forget
-        } else if (relativeSongBpmChange >= MINOR_CHANGE_THRESHOLD) {
-          // Case A: minor change — adjust playback speed of current song, no switch
-          console.log(
-            `[Session] SYNC Case A  songBpmDrift=${(relativeSongBpmChange * 100).toFixed(1)}%  adjustingRate  target=${targetSongBPM}`,
-          );
-          this.adjustBPM(targetSongBPM);
-          this.setState({ ...this.state, currentSongBPM: targetSongBPM });
-        } else {
-          console.log(
-            `[Session] SYNC no-op  hrChange=${(hrChange * 100).toFixed(1)}%  songDrift=${(relativeSongBpmChange * 100).toFixed(1)}%  both <5%`,
-          );
-        }
-        // Transition to slow-down phase only after 2 consecutive falling HR readings
-        // to filter out single-sample noise and natural HR fluctuations.
-        if (heartRate < prevHeartRate) {
-          this.playingFallCount++;
-          if (this.playingFallCount >= 2) {
-            console.log(
-              `[Session] PHASE → slowing  HR fell consistently (${this.playingFallCount} in a row, ${prevHeartRate}→${heartRate})`,
-            );
-            this.setState({
-              ...this.state,
-              phase: "slowing",
-              message: "Synchronization achieved! Now let's slow things down…",
-            });
-            this.playingFallCount = 0;
-          } else {
-            console.log(`[Session] SYNC fall 1/2  waiting for 2nd consecutive drop (${prevHeartRate}→${heartRate})`);
-          }
-        } else {
-          this.playingFallCount = 0; // HR stable or rising — reset the counter
-        }
-      }
+      this.handleSyncPhase(heartRate, prevHeartRate, peakHeartRate, hrChange, milestonesReached, message);
     } else {
-      // ── Step 3/4: slow-down phase — target 90%–95% of HR ──
-      this.setState({
-        ...this.state,
-        phase: "slowing",
-        currentHeartRate: heartRate,
-        peakHeartRate,
-        milestonesReached,
-        message,
-      });
-
-      if (!this.isLoadingLoop) {
-        const slowMinBpm = Math.ceil(heartRate * 0.9);
-        const slowMaxBpm = Math.floor(heartRate * 0.95);
-        const targetSongBPM = Math.round((slowMinBpm + slowMaxBpm) / 2);
-        const effectiveSongBPM = this.state.currentSongBPM > 0 ? this.state.currentSongBPM : this.originSongBPM;
-        const relativeSongBpmChange =
-          effectiveSongBPM > 0 ? Math.abs(targetSongBPM - effectiveSongBPM) / effectiveSongBPM : 1;
-        if (relativeSongBpmChange >= MINOR_CHANGE_THRESHOLD) {
-          // Case B: HR changed ≥5% — load a new song at the slow-down range
-          console.log(
-            `[Session] SLOW Case B  songDrift=${(relativeSongBpmChange * 100).toFixed(1)}% ≥5%  slowRange=[${slowMinBpm}, ${slowMaxBpm}]  loadingNewSong`,
-          );
-          this.setState({ ...this.state, message: "Adapting music to your new rhythm…" });
-          this.loadSong(targetSongBPM, { minBpm: slowMinBpm, maxBpm: slowMaxBpm }); // fire-and-forget
-        } else {
-          console.log(
-            `[Session] SLOW Case A  songDrift=${(relativeSongBpmChange * 100).toFixed(1)}% <5%  intervalWillNudge`,
-          );
-        }
-        // Case A (minor change) is handled by the adapt interval via adjustBPM
-      }
+      this.handleSlowDownPhase(heartRate, peakHeartRate, hrChange, milestonesReached, message);
     }
   }
 
@@ -202,9 +98,6 @@ class MusicService {
   }
 
   completeSession(): void {
-    console.log(
-      `[Session] PHASE → completed  finalHR=${this.state.currentHeartRate}  milestones=${this.state.milestonesReached}`,
-    );
     this.stopSyncSongFlow();
     this.setState({
       ...this.state,
@@ -215,13 +108,10 @@ class MusicService {
   }
 
   continuePlaying(normalHeartRate: number): void {
-    // After completion, play calming music at max = min(normalHeartRate, 80) per spec Step 5.
+    // After completion, play calming music at max = min(normalHeartRate, 80) per spec Step 4.
     // The adapt interval is intentionally NOT started here — the tempo is fixed at the cap
     // and should not be driven by the continuing HR readings.
     const targetSongBPM = Math.max(50, Math.min(normalHeartRate, 80));
-    console.log(
-      `[Session] CONTINUE_PLAYING  normalHR=${normalHeartRate}  calmingBPM=${targetSongBPM}  (cap=min(normalHR,80))`,
-    );
 
     this.setState({
       ...this.state,
@@ -290,6 +180,122 @@ class MusicService {
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
+  /**
+   * Returns updated milestone count and message if the heart rate crossed
+   * the next 10% drop threshold. Also advances nextMilestoneAt.
+   */
+  private computeMilestoneUpdate(
+    heartRate: number,
+    peakHeartRate: number,
+  ): { milestonesReached: number; message: string } {
+    if (heartRate > this.nextMilestoneAt || this.nextMilestoneAt === 0) {
+      return { milestonesReached: this.state.milestonesReached, message: this.state.message };
+    }
+    const dropPct = Math.round((1 - heartRate / peakHeartRate) * 100);
+    this.nextMilestoneAt *= 1 - MILESTONE_DROP_RATIO;
+    return {
+      milestonesReached: this.state.milestonesReached + 1,
+      message: `Great job! Your heart slowed by ${dropPct}% 💫`,
+    };
+  }
+
+  /**
+   * Step 1 – Sync Phase: music stays matched to HR at 95%–100%.
+   * Runs until two consecutive falling HR readings confirm sync, then transitions to Step 2.
+   */
+  private handleSyncPhase(
+    heartRate: number,
+    prevHeartRate: number,
+    peakHeartRate: number,
+    hrChange: number,
+    milestonesReached: number,
+    message: string,
+  ): void {
+    this.setState({ ...this.state, currentHeartRate: heartRate, peakHeartRate, milestonesReached, message });
+    if (this.isLoadingLoop) return;
+    this.adaptSyncPhaseSong(heartRate, hrChange);
+    this.checkSyncToSlowTransition(heartRate, prevHeartRate);
+  }
+
+  /**
+   * Adapts music during the sync phase:
+   * - Case B (HR change ≥5%): load a new song at 95%–100% of updated HR.
+   * - Case A (minor drift): stretch current song's playback speed.
+   */
+  private adaptSyncPhaseSong(heartRate: number, hrChange: number): void {
+    const minBpm = Math.ceil(heartRate * 0.95);
+    const maxBpm = heartRate;
+    const targetBpm = Math.round((minBpm + maxBpm) / 2);
+
+    if (hrChange >= MINOR_CHANGE_THRESHOLD) {
+      this.setState({ ...this.state, message: "Re-syncing to your heartbeat…" });
+      this.loadSong(targetBpm, { minBpm, maxBpm }); // fire-and-forget
+      return;
+    }
+
+    const effectiveBpm = this.state.currentSongBPM > 0 ? this.state.currentSongBPM : this.originSongBPM;
+    const songDrift = effectiveBpm > 0 ? Math.abs(targetBpm - effectiveBpm) / effectiveBpm : 1;
+    if (songDrift >= MINOR_CHANGE_THRESHOLD) {
+      this.adjustBPM(targetBpm);
+      this.setState({ ...this.state, currentSongBPM: targetBpm });
+    }
+  }
+
+  /**
+   * Detects transition from sync phase to slow-down phase.
+   * Requires 2 consecutive falling HR readings to avoid reacting to noise.
+   */
+  private checkSyncToSlowTransition(heartRate: number, prevHeartRate: number): void {
+    if (heartRate >= prevHeartRate) {
+      this.playingFallCount = 0;
+      return;
+    }
+
+    this.playingFallCount++;
+    if (this.playingFallCount < 2) return;
+
+    this.playingFallCount = 0;
+    const minBpm = Math.ceil(heartRate * 0.9);
+    const maxBpm = Math.floor(heartRate * 0.95);
+    this.setState({
+      ...this.state,
+      phase: "slowing",
+      message: "Your heart and music are now in sync — let's try to slow your heart",
+    });
+    this.loadSong(Math.round((minBpm + maxBpm) / 2), { minBpm, maxBpm }); // fire-and-forget
+  }
+
+  /**
+   * Step 2 – Slow Down Phase: music targets 90%–95% of HR.
+   * - Case B (HR change ≥5%): load a new song at the lower range.
+   * - Case A (minor change): handled by the 2-min adapt interval.
+   */
+  private handleSlowDownPhase(
+    heartRate: number,
+    peakHeartRate: number,
+    hrChange: number,
+    milestonesReached: number,
+    message: string,
+  ): void {
+    this.setState({
+      ...this.state,
+      phase: "slowing",
+      currentHeartRate: heartRate,
+      peakHeartRate,
+      milestonesReached,
+      message,
+    });
+    if (this.isLoadingLoop) return;
+
+    if (hrChange >= MINOR_CHANGE_THRESHOLD) {
+      const minBpm = Math.ceil(heartRate * 0.9);
+      const maxBpm = Math.floor(heartRate * 0.95);
+      this.setState({ ...this.state, message: "Adapting music to your new rhythm…" });
+      this.loadSong(Math.round((minBpm + maxBpm) / 2), { minBpm, maxBpm }); // fire-and-forget
+    }
+    // Case A: minor change nudged by the adapt interval via adjustBPM
+  }
+
   private defaultState(): SessionState {
     return {
       phase: "idle",
@@ -343,9 +349,6 @@ class MusicService {
           this.state.phase === "playing"
             ? Math.min(targetSongBPM, this.state.currentSongBPM + 2) // can nudge up or hold during sync
             : Math.max(targetSongBPM, this.state.currentSongBPM - 2); // only nudge down during slow-down
-        console.log(
-          `[Session] INTERVAL nudge  phase=${this.state.phase}  currentBPM=${this.state.currentSongBPM}→${nudgedSongBPM}  target=${targetSongBPM}`,
-        );
         const actualSongBPM = this.adjustBPM(nudgedSongBPM);
         this.setState({ ...this.state, currentSongBPM: actualSongBPM });
       }
@@ -366,9 +369,6 @@ class MusicService {
         ? this.preferredGenres[Math.floor(Math.random() * this.preferredGenres.length)]
         : undefined;
     const excludeIds = this.recentlyPlayedIds.length > 0 ? [...this.recentlyPlayedIds] : undefined;
-    console.log(
-      `[Session] LOAD_SONG  target=${targetSongBPM}  range=${bpmRange ? `[${bpmRange.minBpm}, ${bpmRange.maxBpm}]` : "none (fallback)"}  genre=${genre ?? "any"}`,
-    );
     this.isLoadingLoop = true;
     try {
       await this.stopSong();
@@ -413,9 +413,6 @@ class MusicService {
       // Track recently played IDs to avoid immediate repeats (spec requirement)
       this.recentlyPlayedIds = [song.id, ...this.recentlyPlayedIds].slice(0, 3);
       const inRange = bpmRange ? song.bpm !== null && song.bpm >= bpmRange.minBpm && song.bpm <= bpmRange.maxBpm : true;
-      console.log(
-        `[Session] SONG_SELECTED  title="${song.title}"  catalogBPM=${song.bpm}  genre=${song.genre}  inRange=${inRange}`,
-      );
       // Guard: if session ended while this async load was in-flight, discard the result
       if (this.state.phase === "idle" || this.state.phase === "completed") return;
       // When a fallback is out of range, track currentSongBPM at target so drift

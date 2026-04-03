@@ -44,13 +44,17 @@ class HeartRateService {
       this.sessionStartHeartRate = startHeartRate;
       this.currentSim = startHeartRate;
       this.sessionElapsedSec = 0;
+      console.log(`[HR] startMonitoring  mode=session  startHR=${startHeartRate}  pollInterval=${POLL_INTERVAL_MS}ms`);
     } else {
       // Resting baseline 65–80
       this.currentSim = 65 + Math.random() * 15;
+      console.log(
+        `[HR] startMonitoring  mode=idle  baseline=${Math.round(this.currentSim)}  pollInterval=${POLL_INTERVAL_MS}ms`,
+      );
     }
 
     if (this.intervalId) clearInterval(this.intervalId);
-    this.poll(); // immediate first reading
+    // this.poll(); // immediate first reading
     this.intervalId = setInterval(() => this.poll(), POLL_INTERVAL_MS);
   }
 
@@ -58,6 +62,7 @@ class HeartRateService {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
+      console.log(`[HR] stopMonitoring  mode=${this.simMode}`);
     }
   }
 
@@ -65,7 +70,10 @@ class HeartRateService {
   injectBPM(bpm: number): void {
     if (bpm >= MIN_VALID_BPM && bpm <= MAX_VALID_BPM) {
       this.currentSim = bpm;
+      console.log(`[HR] injectBPM  bpm=${bpm}`);
       this.publish(bpm);
+    } else {
+      console.warn(`[HR] injectBPM rejected  bpm=${bpm}  (valid range: ${MIN_VALID_BPM}–${MAX_VALID_BPM})`);
     }
   }
 
@@ -91,12 +99,18 @@ class HeartRateService {
 
   private poll(): void {
     const raw = this.simulateReading();
-    if (raw < MIN_VALID_BPM || raw > MAX_VALID_BPM) return;
+    if (raw < MIN_VALID_BPM || raw > MAX_VALID_BPM) {
+      console.warn(`[HR] poll  raw=${raw} out of valid range — discarded`);
+      return;
+    }
 
     this.history.push(raw);
     if (this.history.length > SMOOTHING_WINDOW) this.history.shift();
 
     const smoothed = Math.round(this.history.reduce((a, b) => a + b, 0) / this.history.length);
+    console.log(
+      `[HR] poll  raw=${raw}  smoothed=${smoothed}  history=[${this.history.join(", ")}]  mode=${this.simMode}${this.simMode === "session" ? `  elapsed=${Math.round(this.sessionElapsedSec)}s` : ""}`,
+    );
     this.publish(smoothed);
   }
 
@@ -119,6 +133,9 @@ class HeartRateService {
       const drop = this.sessionStartHeartRate * 0.4 * progress;
       const noise = (Math.random() - 0.5) * 6;
       this.currentSim = Math.max(50, this.sessionStartHeartRate - drop + noise);
+      console.log(
+        `[HR] simulate  mode=session  elapsed=${Math.round(this.sessionElapsedSec)}s  progress=${(progress * 100).toFixed(0)}%  drop=${drop.toFixed(1)}  noise=${noise.toFixed(1)}  raw=${Math.round(this.currentSim)}`,
+      );
     } else {
       const delta = (Math.random() - 0.5) * 4;
       this.currentSim = Math.max(55, Math.min(90, this.currentSim + delta));
@@ -126,6 +143,9 @@ class HeartRateService {
       // ~5 % chance of a demonstrative spike so users can see the alert on Home
       if (Math.random() < 0.05) {
         this.currentSim = 105 + Math.random() * 30;
+        console.log(`[HR] simulate  mode=idle  SPIKE  raw=${Math.round(this.currentSim)}`);
+      } else {
+        console.log(`[HR] simulate  mode=idle  delta=${delta.toFixed(1)}  raw=${Math.round(this.currentSim)}`);
       }
     }
     return Math.round(this.currentSim);
