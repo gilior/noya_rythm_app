@@ -56,3 +56,15 @@ bpm_tool/*.opus
 bpm_tool/*.m4a
 bpm_tool/results.csv
 bpm_tool/results.csv
+
+
+songs_manager/venv/
+songs_manager/__pycache__/
+songs_manager/*.wav
+songs_manager/*.mp3
+songs_manager/*.webm
+songs_manager/*.ogg
+songs_manager/*.opus
+songs_manager/*.m4a
+songs_manager/results.csv
+songs_manager/cookies.txt

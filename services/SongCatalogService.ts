@@ -1,14 +1,12 @@
-import songs from "../assets/songs/output_smaple/samples.json";
-
-type RawSong = (typeof songs)[number];
+import { supabase } from "./supabase";
 
 export interface CatalogSong {
   id: string;
   title: string;
   channel: string;
   genre: string;
-  bpm: number | null;
-  audioUrl: string | null;
+  BPM: number | null;
+  audio_url: string | null;
 }
 
 export interface CatalogFilter {
@@ -28,36 +26,8 @@ export interface CatalogFilter {
   limit?: number;
 }
 
-function normalizeBpm(value: RawSong["BPM"]): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const parsed = Number.parseFloat(value.trim());
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function normalizeSong(genre: string, song: RawSong): CatalogSong | null {
-  if (!song.id) {
-    return null;
-  }
-
-  return {
-    id: song.id,
-    title: song.title ?? song.id,
-    channel: song.channel ?? "",
-    genre,
-    bpm: normalizeBpm(song.BPM),
-    audioUrl: song.audio_url ?? null,
-  };
-}
-
 function hasBpm(song: CatalogSong): song is CatalogSong & { bpm: number } {
-  return song.bpm !== null;
+  return song.BPM !== null;
 }
 
 function lowerBound(songs: readonly (CatalogSong & { bpm: number })[], bpm: number): number {
@@ -76,15 +46,12 @@ function lowerBound(songs: readonly (CatalogSong & { bpm: number })[], bpm: numb
   return low;
 }
 
-function createCatalog() {
+function createCatalog(songs: CatalogSong[]) {
   const allSongs: CatalogSong[] = [];
   const songsById = new Map<string, CatalogSong>();
   const songsByGenre = new Map<string, CatalogSong[]>();
 
-  for (const rawSong of songs) {
-    const song = normalizeSong(rawSong.genre, rawSong);
-    if (!song) continue;
-
+  for (const song of songs) {
     allSongs.push(song);
     songsById.set(song.id, song);
 
@@ -143,8 +110,7 @@ function applyExcludeAndLimit(songs: readonly CatalogSong[], excludeIds?: Iterab
 }
 
 class SongCatalogService {
-  private readonly catalog = createCatalog();
-
+  private catalog!: ReturnType<typeof createCatalog>;
   getGenres(): string[] {
     return [...this.catalog.songsByGenre.keys()];
   }
@@ -185,6 +151,22 @@ class SongCatalogService {
 
     const index = Math.floor(Math.random() * songs.length);
     return songs[index];
+  }
+
+  async initialize(): Promise<void> {
+    const { data, error } = await supabase.from("songs").select("*");
+    if (error) throw new Error(`Failed to load catalog: ${error.message}`);
+
+    const songs: CatalogSong[] = (data ?? []).map((row) => ({
+      id: row.id,
+      title: row.title ?? row.id,
+      channel: row.channel ?? "",
+      genre: row.genre,
+      BPM: row.BPM ?? null, // uppercase BPM
+      audio_url: row.audio_url ?? null, // snake_case → camelCase
+    }));
+
+    this.catalog = createCatalog(songs);
   }
 }
 
