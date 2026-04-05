@@ -83,7 +83,7 @@ def calc_bpm(file_path: str) -> float:
     audio = es.MonoLoader(filename=file_path, sampleRate=44100)()
     audio = audio[:44100 * 60]          # limit to first 60 s
     bpm, _, _, _, _ = es.RhythmExtractor2013(method="multifeature")(audio)
-    return round(float(bpm), 2)
+    return int(round(float(bpm)))
 
 
 # ── Step 3: Upload audio ──────────────────────────────────────────────────────
@@ -161,7 +161,7 @@ def run_pipeline() -> None:
                     log.info(f"  [{vid}]   uploading to R2...")
                     audio_url = upload_audio(r2, genre, vid, file_path)
 
-                    update["BPM"]       = str(bpm)
+                    update["BPM"]       = bpm
                     update["audio_url"] = audio_url
                     log.info(f"  [{vid}] ✅  {bpm} BPM — {audio_url}")
 
@@ -173,7 +173,7 @@ def run_pipeline() -> None:
                     bpm = calc_bpm(file_path)
                     log.info(f"  [{vid}]   BPM: {bpm}")
 
-                    update["BPM"] = str(bpm)
+                    update["BPM"] = bpm
                     log.info(f"  [{vid}] ✅  {bpm} BPM")
 
                 if update:
@@ -182,10 +182,6 @@ def run_pipeline() -> None:
 
             except Exception as exc:
                 log.error(f"  [{vid}] ❌  {exc}")
-                try:
-                    sb.table("songs").update({"BPM": "Error"}).eq("id", vid).execute()
-                except Exception:
-                    pass
                 totals["err"] += 1
 
     print(f"\n{'─' * 50}")
