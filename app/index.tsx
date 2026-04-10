@@ -6,14 +6,14 @@ import { useCatalog } from "../contexts/CatalogContext"; // ← add
 import { useProfile } from "../contexts/ProfileContext";
 
 export default function Index() {
-  const { profile, isLoading } = useProfile();
-  const { isReady } = useCatalog(); // ← add
+  const { profile, isLoadingProfile: isLoadingProfile } = useProfile();
+  const { isCatalogReady: isCatalogReady } = useCatalog();
 
   useEffect(() => {
-    if (!isLoading && isReady) {
+    if (!isLoadingProfile && isCatalogReady) {
       router.replace((profile ? "/home" : "/setup") as any);
     }
-  }, [isLoading, profile, isReady]);
+  }, [isLoadingProfile, profile, isCatalogReady]);
 
   return (
     <View

@@ -1,17 +1,17 @@
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    StatusBar as RNStatusBar,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  StatusBar as RNStatusBar,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { GENRES } from "../constants/genres";
 import { Colors, Radius, Spacing } from "../constants/theme";
@@ -105,6 +105,7 @@ export default function SettingsScreen() {
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Normal BPM</Text>
                 <TextInput
+                defaultValue="70"
                   style={styles.input}
                   value={normalHeartRate}
                   onChangeText={setNormalHeartRate}
@@ -117,6 +118,8 @@ export default function SettingsScreen() {
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Too Fast BPM</Text>
                 <TextInput
+                                defaultValue="100"
+
                   style={styles.input}
                   value={tooFastHeartRate}
                   onChangeText={setTooFastHeartRate}

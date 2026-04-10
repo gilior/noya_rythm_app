@@ -12,7 +12,7 @@ export const DEFAULT_PROFILE: UserProfile = {
 
 interface ProfileContextValue {
   profile: UserProfile | null;
-  isLoading: boolean;
+  isLoadingProfile: boolean;
   saveProfile: (profile: UserProfile) => Promise<void>;
   updateProfile: (partial: Partial<UserProfile>) => Promise<void>;
   saveSessionStats: (stats: SessionStats) => Promise<void>;
@@ -22,7 +22,7 @@ const ProfileContext = createContext<ProfileContextValue | null>(null);
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
 
   useEffect(() => {
     AsyncStorage.getItem(PROFILE_KEY)
@@ -30,7 +30,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         if (stored) setProfile(JSON.parse(stored));
       })
       .catch((e) => console.error("Failed to load profile:", e))
-      .finally(() => setIsLoading(false));
+      .finally(() => setIsLoadingProfile(false));
   }, []);
 
   const saveProfile = useCallback(async (newProfile: UserProfile) => {
@@ -66,7 +66,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     <ProfileContext.Provider
       value={{
         profile,
-        isLoading,
+        isLoadingProfile: isLoadingProfile,
         saveProfile,
         updateProfile,
         saveSessionStats,

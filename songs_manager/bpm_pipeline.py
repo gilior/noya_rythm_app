@@ -125,14 +125,22 @@ def run_pipeline() -> None:
     sb = _supabase_client()
     r2 = _r2_client()
 
-    # Fetch all rows that are missing BPM or audio_url
-    response = (
-        sb.table("songs")
-        .select("id, title, channel, genre, BPM, audio_url")
-        .or_("BPM.is.null,audio_url.is.null")
-        .execute()
-    )
-    rows = response.data or []
+    # Fetch all rows that are missing BPM or audio_url (paginated, Supabase caps at 1000/request)
+    PAGE = 1000
+    offset = 0
+    rows = []
+    while True:
+        batch = (
+            sb.table("songs")
+            .select("id, title, channel, genre, BPM, audio_url")
+            .or_("BPM.is.null,audio_url.is.null")
+            .range(offset, offset + PAGE - 1)
+            .execute()
+        ).data or []
+        rows.extend(batch)
+        if len(batch) < PAGE:
+            break
+        offset += PAGE
     log.info(f"Found {len(rows)} rows to process (missing BPM or audio_url)")
 
     totals = {"ok": 0, "err": 0}

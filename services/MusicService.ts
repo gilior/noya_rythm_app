@@ -1,6 +1,6 @@
 import { Audio } from "expo-av";
 import { SessionState } from "../types";
-import { songCatalogService } from "./SongCatalogService";
+import { CatalogSong, songCatalogService } from "./SongCatalogService";
 
 type StateChangeCallback = (state: SessionState) => void;
 
@@ -400,7 +400,7 @@ class MusicService {
 
       // Priority: preferred genre + exact range + no repeats, falling back progressively.
       // The hard maxBpm cap is preserved in all BPM-range searches (spec: never exceed HR).
-      const song = bpmRange
+      const song: CatalogSong | null = (bpmRange
         ? ((genre &&
             songCatalogService.pickRandomSong({
               minBpm: bpmRange.minBpm,
@@ -426,29 +426,29 @@ class MusicService {
           songCatalogService.pickRandomSong({ targetBpm: targetSongBPM, bpmTolerance: 5, excludeIds }) ??
           songCatalogService.pickRandomSong({ targetBpm: targetSongBPM, bpmTolerance: 5 }) ??
           songCatalogService.pickRandomSong({ targetBpm: targetSongBPM, bpmTolerance: 15 }) ??
-          songCatalogService.pickRandomSong());
+          songCatalogService.pickRandomSong())) || null;
 
       if (!song) {
         console.warn("No matching song found for BPM:", targetSongBPM);
         return;
       }
 
-      this.originSongBPM = song.bpm ?? targetSongBPM;
+      this.originSongBPM = song.BPM ?? targetSongBPM;
       this.currentRate = 1.0;
       // Track recently played IDs to avoid immediate repeats (spec requirement)
       this.recentlyPlayedIds = [song.id, ...this.recentlyPlayedIds].slice(0, 3);
-      const inRange = bpmRange ? song.bpm !== null && song.bpm >= bpmRange.minBpm && song.bpm <= bpmRange.maxBpm : true;
+      const inRange = bpmRange ? song.BPM !== null && song.BPM >= bpmRange.minBpm && song.BPM <= bpmRange.maxBpm : true;
       // Guard: if session ended while this async load was in-flight, discard the result
       if (this.state.phase === "idle" || this.state.phase === "completed") return;
       // When a fallback is out of range, track currentSongBPM at target so drift
       // calculation on the next HR reading doesn't immediately trigger another load.
       this.setState({
         ...this.state,
-        currentSong: { title: song.title, bpm: song.bpm },
+        currentSong: { title: song.title, bpm: song.BPM },
         currentSongBPM: inRange ? Math.round(this.originSongBPM) : targetSongBPM,
       });
 
-      if (!song.audioUrl) {
+      if (!song.audio_url) {
         console.warn("MusicService: song has no audioUrl, skipping:", song.id);
         return;
       }
@@ -456,7 +456,7 @@ class MusicService {
       await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
 
       const { sound } = await Audio.Sound.createAsync(
-        { uri: song.audioUrl },
+        { uri: song.audio_url },
         { isLooping: true, shouldPlay: this.state.isPlaying },
       );
       this.sound = sound;

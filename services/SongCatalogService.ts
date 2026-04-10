@@ -47,6 +47,7 @@ function lowerBound(songs: readonly (CatalogSong & { bpm: number })[], bpm: numb
 }
 
 function createCatalog(songs: CatalogSong[]) {
+  console.log(`[SongCatalogService] [createCatalog] songs input  ${songs.length}`)
   const allSongs: CatalogSong[] = [];
   const songsById = new Map<string, CatalogSong>();
   const songsByGenre = new Map<string, CatalogSong[]>();
@@ -154,8 +155,15 @@ class SongCatalogService {
   }
 
   async initialize(): Promise<void> {
-    const { data, error } = await supabase.from("songs").select("*");
-    if (error) throw new Error(`Failed to load catalog: ${error.message}`);
+    const { data, error } = await supabase.from("songs").select();
+    if (error) {
+      console.error("[SongCatalogService] Failed to load catalog:", error.message);
+      throw new Error(`Failed to load catalog: ${error.message}`);
+    }
+    else{
+        console.log(`[SongCatalogService] [initialize] songs data  ${data.length}`)
+
+    }
 
     const songs: CatalogSong[] = (data ?? []).map((row) => ({
       id: row.id,
@@ -167,6 +175,11 @@ class SongCatalogService {
     }));
 
     this.catalog = createCatalog(songs);
+    console.log(
+      `[SongCatalogService] Catalog initialized: ${songs.length} total songs, ` +
+      `${this.catalog.songsByGenre.size} genres (${[...this.catalog.songsByGenre.keys()].join(", ")}), ` +
+      `${this.catalog.allSongsSortedByBpm.length} songs with BPM data.`
+    );
   }
 }
 

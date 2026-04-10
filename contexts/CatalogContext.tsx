@@ -2,19 +2,19 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { songCatalogService } from "../services/SongCatalogService";
 
 interface CatalogContextValue {
-  isReady: boolean;
+  isCatalogReady: boolean;
 }
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
 
 export function CatalogProvider({ children }: { children: React.ReactNode }) {
-  const [isReady, setIsReady] = useState(false);
+  const [isCatalogReady, setIsReady] = useState(false);
 
   useEffect(() => {
     songCatalogService.initialize().finally(() => setIsReady(true));
   }, []);
 
-  return <CatalogContext.Provider value={{ isReady }}>{children}</CatalogContext.Provider>;
+  return <CatalogContext.Provider value={{ isCatalogReady: isCatalogReady }}>{children}</CatalogContext.Provider>;
 }
 
 export function useCatalog(): CatalogContextValue {
