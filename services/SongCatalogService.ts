@@ -47,7 +47,7 @@ function lowerBound(songs: readonly (CatalogSong & { bpm: number })[], bpm: numb
 }
 
 function createCatalog(songs: CatalogSong[]) {
-  console.log(`[SongCatalogService] [createCatalog] songs input  ${songs.length}`)
+  console.log(`[SongCatalogService] [createCatalog] songs input  ${songs.length}`);
   const allSongs: CatalogSong[] = [];
   const songsById = new Map<string, CatalogSong>();
   const songsByGenre = new Map<string, CatalogSong[]>();
@@ -154,58 +154,56 @@ class SongCatalogService {
     return songs[index];
   }
 
-  public findNearestLowBPMSong(genre:string, bpm:number,excludeIds:string[]):CatalogSong|null{
+  // per given bpm, find the largest song bpm the close to the given bpm
+  public findNearestLowBPMSong(genre: string, bpm: number, excludeIds: string[]): CatalogSong | null {
     // binary search to find closest bpm song to required bpm
-    let index_of_bpm=-1;
-const filterByGenre=this.catalog.songsByGenreSortedByBpm.get(genre)||[];
-if (filterByGenre?.length==0){ // genre not exists
-  const filterByBpm=this.catalog.allSongsSortedByBpm
-}
-else{ // genre exists
-let low=0;
-let high=filterByGenre.length-1;
-while(low<high){
-  let mid=Math.floor((low+high)/2);
-  let curr_val=filterByGenre[mid].BPM||0;
-  if (bpm>curr_val){
-low=mid+1;
+    let res = null;
+    const filterByGenre = this.catalog.songsByGenreSortedByBpm.get(genre) || [];
+    if (filterByGenre?.length == 0) {
+      // genre not exists - just fetch somt random song
+      res = this.find_song(bpm, excludeIds, this.catalog.allSongsSortedByBpm);
+    } else {
+      // genre exists
+      res = this.find_song(bpm, excludeIds, filterByGenre);
+    }
+    return res;
   }
-  else if (bpm<curr_val){
-    high=mid-1;
-  }
-  else{
-index_of_bpm=mid;
-  }
-  // now index_of_bpm is the relevant bpm or the closest
-  // scan down to find the nearest song with bpm lower but keep an eye on excluded
 
-}
-
-}
+  private find_song(bpm: number, excludeIds: string[], songs: (CatalogSong & { bpm: number })[]): CatalogSong | null {
+    let index_of_bpm = lowerBound(songs, bpm) - 1;
+    let start_from = Math.min(index_of_bpm, songs.length - 1);
+    // now index_of_bpm is the relevant bpm or the closest
+    // scan down to find the nearest song with bpm lower but keep an eye on excluded
+    for (let i = start_from; i > -1; i--) {
+      const curr_song = songs[i];
+      if (!excludeIds.includes(curr_song.id)) {
+        return curr_song;
+      }
+    }
     return null;
   }
 
   async initialize(): Promise<void> {
-      const PAGE_SIZE = 1000;
-  const allRows: any[] = [];
-  let from = 0;
+    const PAGE_SIZE = 1000;
+    const allRows: any[] = [];
+    let from = 0;
 
-  while (true) {
-    const { data, error } = await supabase
-      .from("songs")
-      .select()
-      .range(from, from + PAGE_SIZE - 1);
+    while (true) {
+      const { data, error } = await supabase
+        .from("songs")
+        .select()
+        .range(from, from + PAGE_SIZE - 1);
 
-    if (error) {
-      console.error("[SongCatalogService] Failed to load catalog:", error.message);
-      throw new Error(`Failed to load catalog: ${error.message}`);
+      if (error) {
+        console.error("[SongCatalogService] Failed to load catalog:", error.message);
+        throw new Error(`Failed to load catalog: ${error.message}`);
+      }
+
+      allRows.push(...data);
+
+      if (data.length < PAGE_SIZE) break; // last page
+      from += PAGE_SIZE;
     }
-
-    allRows.push(...data);
-
-    if (data.length < PAGE_SIZE) break; // last page
-    from += PAGE_SIZE;
-  }
 
     const songs: CatalogSong[] = (allRows ?? []).map((row) => ({
       id: row.id,
@@ -219,8 +217,8 @@ index_of_bpm=mid;
     this.catalog = createCatalog(songs);
     console.log(
       `[SongCatalogService] Catalog initialized: ${songs.length} total songs, ` +
-      `${this.catalog.songsByGenre.size} genres (${[...this.catalog.songsByGenre.keys()].join(", ")}), ` +
-      `${this.catalog.allSongsSortedByBpm.length} songs with BPM data.`
+        `${this.catalog.songsByGenre.size} genres (${[...this.catalog.songsByGenre.keys()].join(", ")}), ` +
+        `${this.catalog.allSongsSortedByBpm.length} songs with BPM data.`,
     );
   }
 }
