@@ -154,18 +154,60 @@ class SongCatalogService {
     return songs[index];
   }
 
+  public findNearestLowBPMSong(genre:string, bpm:number,excludeIds:string[]):CatalogSong|null{
+    // binary search to find closest bpm song to required bpm
+    let index_of_bpm=-1;
+const filterByGenre=this.catalog.songsByGenreSortedByBpm.get(genre)||[];
+if (filterByGenre?.length==0){ // genre not exists
+  const filterByBpm=this.catalog.allSongsSortedByBpm
+}
+else{ // genre exists
+let low=0;
+let high=filterByGenre.length-1;
+while(low<high){
+  let mid=Math.floor((low+high)/2);
+  let curr_val=filterByGenre[mid].BPM||0;
+  if (bpm>curr_val){
+low=mid+1;
+  }
+  else if (bpm<curr_val){
+    high=mid-1;
+  }
+  else{
+index_of_bpm=mid;
+  }
+  // now index_of_bpm is the relevant bpm or the closest
+  // scan down to find the nearest song with bpm lower but keep an eye on excluded
+
+}
+
+}
+    return null;
+  }
+
   async initialize(): Promise<void> {
-    const { data, error } = await supabase.from("songs").select();
+      const PAGE_SIZE = 1000;
+  const allRows: any[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("songs")
+      .select()
+      .range(from, from + PAGE_SIZE - 1);
+
     if (error) {
       console.error("[SongCatalogService] Failed to load catalog:", error.message);
       throw new Error(`Failed to load catalog: ${error.message}`);
     }
-    else{
-        console.log(`[SongCatalogService] [initialize] songs data  ${data.length}`)
 
-    }
+    allRows.push(...data);
 
-    const songs: CatalogSong[] = (data ?? []).map((row) => ({
+    if (data.length < PAGE_SIZE) break; // last page
+    from += PAGE_SIZE;
+  }
+
+    const songs: CatalogSong[] = (allRows ?? []).map((row) => ({
       id: row.id,
       title: row.title ?? row.id,
       channel: row.channel ?? "",
