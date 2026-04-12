@@ -400,33 +400,38 @@ class MusicService {
 
       // Priority: preferred genre + exact range + no repeats, falling back progressively.
       // The hard maxBpm cap is preserved in all BPM-range searches (spec: never exceed HR).
-      const song: CatalogSong | null = (bpmRange
-        ? ((genre &&
-            songCatalogService.pickRandomSong({
-              minBpm: bpmRange.minBpm,
-              maxBpm: bpmRange.maxBpm,
-              genre,
-              excludeIds,
-            })) ??
-          (genre && songCatalogService.pickRandomSong({ minBpm: bpmRange.minBpm, maxBpm: bpmRange.maxBpm, genre })) ??
-          songCatalogService.pickRandomSong({ minBpm: bpmRange.minBpm, maxBpm: bpmRange.maxBpm, excludeIds }) ??
-          songCatalogService.pickRandomSong({ minBpm: bpmRange.minBpm, maxBpm: bpmRange.maxBpm }) ??
-          (genre &&
+      const song: CatalogSong | null =
+        (bpmRange
+          ? ((genre &&
+              songCatalogService.pickRandomSong({
+                minBpm: bpmRange.minBpm,
+                maxBpm: bpmRange.maxBpm,
+                genre,
+                excludeIds,
+              })) ??
+            (genre && songCatalogService.pickRandomSong({ minBpm: bpmRange.minBpm, maxBpm: bpmRange.maxBpm, genre })) ??
+            songCatalogService.pickRandomSong({ minBpm: bpmRange.minBpm, maxBpm: bpmRange.maxBpm, excludeIds }) ??
+            songCatalogService.pickRandomSong({ minBpm: bpmRange.minBpm, maxBpm: bpmRange.maxBpm }) ??
+            (genre &&
+              songCatalogService.pickRandomSong({
+                targetBpm: targetSongBPM,
+                bpmTolerance: 15,
+                maxBpm: bpmRange.maxBpm,
+                genre,
+              })) ??
             songCatalogService.pickRandomSong({
               targetBpm: targetSongBPM,
               bpmTolerance: 15,
               maxBpm: bpmRange.maxBpm,
-              genre,
-            })) ??
-          songCatalogService.pickRandomSong({ targetBpm: targetSongBPM, bpmTolerance: 15, maxBpm: bpmRange.maxBpm }) ??
-          songCatalogService.pickRandomSong())
-        : ((genre &&
-            songCatalogService.pickRandomSong({ targetBpm: targetSongBPM, bpmTolerance: 5, genre, excludeIds })) ??
-          (genre && songCatalogService.pickRandomSong({ targetBpm: targetSongBPM, bpmTolerance: 5, genre })) ??
-          songCatalogService.pickRandomSong({ targetBpm: targetSongBPM, bpmTolerance: 5, excludeIds }) ??
-          songCatalogService.pickRandomSong({ targetBpm: targetSongBPM, bpmTolerance: 5 }) ??
-          songCatalogService.pickRandomSong({ targetBpm: targetSongBPM, bpmTolerance: 15 }) ??
-          songCatalogService.pickRandomSong())) || null;
+            }) ??
+            songCatalogService.pickRandomSong())
+          : ((genre &&
+              songCatalogService.pickRandomSong({ targetBpm: targetSongBPM, bpmTolerance: 5, genre, excludeIds })) ??
+            (genre && songCatalogService.pickRandomSong({ targetBpm: targetSongBPM, bpmTolerance: 5, genre })) ??
+            songCatalogService.pickRandomSong({ targetBpm: targetSongBPM, bpmTolerance: 5, excludeIds }) ??
+            songCatalogService.pickRandomSong({ targetBpm: targetSongBPM, bpmTolerance: 5 }) ??
+            songCatalogService.pickRandomSong({ targetBpm: targetSongBPM, bpmTolerance: 15 }) ??
+            songCatalogService.pickRandomSong())) || null;
 
       if (!song) {
         console.warn("No matching song found for BPM:", targetSongBPM);
@@ -495,6 +500,10 @@ class MusicService {
       await this.sound.stopAsync().catch(() => null);
       this.sound = null;
     }
+  }
+
+  private getRandomGenre(): string {
+    return this.preferredGenres[Math.floor(Math.random() * this.preferredGenres.length)];
   }
 }
 

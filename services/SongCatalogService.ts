@@ -160,18 +160,26 @@ class SongCatalogService {
     let res = null;
     const filterByGenre = this.catalog.songsByGenreSortedByBpm.get(genre) || [];
     if (filterByGenre?.length == 0) {
-      // genre not exists - just fetch somt random song
+      // genre not exists -  fetch song based on bpm and unused song
       res = this.find_song(bpm, excludeIds, this.catalog.allSongsSortedByBpm);
+      if (res == null) {
+        // all songs are used just provide a song based on bpm
+        res = this.find_song(bpm, [], this.catalog.allSongsSortedByBpm);
+      }
     } else {
-      // genre exists
+      // genre exists - find a song based on bpm and enre, just exclide used songs
       res = this.find_song(bpm, excludeIds, filterByGenre);
+      if (res == null) {
+        // all songs are used just provide a song based on bpm and genre
+        res = this.find_song(bpm, [], filterByGenre);
+      }
     }
     return res;
   }
 
   private find_song(bpm: number, excludeIds: string[], songs: (CatalogSong & { bpm: number })[]): CatalogSong | null {
     let index_of_bpm = lowerBound(songs, bpm) - 1;
-    let start_from = Math.min(index_of_bpm, songs.length - 1);
+    let start_from = index_of_bpm < 0 ? 0 : Math.min(index_of_bpm, songs.length - 1);
     // now index_of_bpm is the relevant bpm or the closest
     // scan down to find the nearest song with bpm lower but keep an eye on excluded
     for (let i = start_from; i > -1; i--) {
