@@ -4,3 +4,4 @@ imageio-ffmpeg
 boto3
 python-dotenv
 supabase
+requests

@@ -1,0 +1,71 @@
+{
+  "max_new_per_genre": 500,
+  "pages_per_query": 4,
+  "year_range_min": 2008,
+  "year_range_max": 2024,
+  "year_window_size": 2,
+  "query_template": "{term} \"Provided to YouTube\" -live -concert -performance",
+  "youtube_search_params": {
+    "part": "snippet",
+    "type": "video",
+    "videoCategoryId": "10",
+    "videoDefinition": "high",
+    "maxResults": 50
+  },
+  "official_channel_rules": {
+    "topic_suffix": "- Topic",
+    "allow_vevo": true
+  },
+  "genres": [
+    {
+      "id": "rock",
+      "topicId": "/m/06by7",
+      "search_terms": ["rock music", "classic rock", "90s rock", "80s rock", "hard rock"]
+    },
+    {
+      "id": "alt-rock",
+      "topicId": "/m/06by7",
+      "search_terms": ["alternative rock", "indie rock", "90s alt rock", "grunge music"]
+    },
+    {
+      "id": "ambient",
+      "topicId": "/m/01643",
+      "search_terms": ["ambient music", "dark ambient", "space ambient", "ambient sleep"]
+    },
+    {
+      "id": "classical",
+      "topicId": "/m/01mc8",
+      "search_terms": ["classical music", "mozart", "beethoven", "classical piano", "orchestra"]
+    },
+    {
+      "id": "jazz",
+      "topicId": "/m/03_d0",
+      "search_terms": ["jazz music", "cool jazz", "bebop", "blue note jazz", "smooth jazz"]
+    },
+    {
+      "id": "nature",
+      "topicId": "/m/05zppz",
+      "search_terms": ["nature sounds", "rain sounds", "forest sounds", "ocean waves sleep"]
+    },
+    {
+      "id": "meditation",
+      "topicId": "/m/01643",
+      "search_terms": ["meditation music", "zen music", "healing music", "chakra balancing"]
+    },
+    {
+      "id": "lofi",
+      "topicId": "/m/0glt67",
+      "search_terms": ["lofi hip hop", "lofi chill", "lofi beats", "chillhop"]
+    },
+    {
+      "id": "downtempo",
+      "topicId": "/m/02lkt",
+      "search_terms": ["downtempo music", "trip hop", "chillout music", "ambient house"]
+    },
+    {
+      "id": "piano",
+      "topicId": "/m/04rlf",
+      "search_terms": ["solo piano", "relaxing piano", "modern classical piano", "piano sleep"]
+    }
+  ]
+}
