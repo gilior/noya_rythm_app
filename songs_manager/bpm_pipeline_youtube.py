@@ -39,7 +39,7 @@ SUPABASE_KEY    = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
 AUDIO_FORMAT    = "mp3"
 
-_HARVEST_CONFIG_FILE = Path(__file__).parent / "youtube_harvest_config.json"
+_HARVEST_CONFIG_FILE = Path(__file__).parent / "youtube_harvest_config_sample.json"
 
 
 def _r2_client():
