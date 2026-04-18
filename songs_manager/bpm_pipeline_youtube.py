@@ -18,8 +18,10 @@ from supabase import create_client
 
 load_dotenv(Path(__file__).parent / ".env")
 
+_LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper().strip()
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, _LOG_LEVEL, logging.INFO),
     format="%(asctime)s  %(levelname)s  %(message)s",
 )
 log = logging.getLogger(__name__)
@@ -110,7 +112,7 @@ def _youtube_search_page(
 
 def harvest_candidates(
     config: Dict[str, Any],
-    existing_ids: Set[str],
+    skip_ids: Set[str],
 ) -> List[Dict[str, str]]:
     max_new_per_genre = int(config.get("max_new_per_genre", 500))
     pages_per_query = int(config.get("pages_per_query", 4))
@@ -136,7 +138,7 @@ def harvest_candidates(
             log.warning(f"Skipping genre '{genre_id}' due to missing topicId/search_terms")
             continue
 
-        log.info(f"--- Harvesting {genre_id} ---")
+        log.info(f"Harvesting genre: {genre_id}")
 
         # Track IDs within this genre run; don't exceed the per-genre cap.
         genre_seen: Set[str] = set()
@@ -153,7 +155,7 @@ def harvest_candidates(
             published_before = f"{end_year}-12-31T23:59:59Z"
 
             query = query_template.format(term=str(term))
-            log.info(f"  Query: {term} ({start_year}-{end_year})")
+            log.debug(f"  Query: {term} ({start_year}-{end_year})")
 
             next_page = ""
             pages = 0
@@ -179,8 +181,8 @@ def harvest_candidates(
                         continue
                     vid = str(vid)
 
-                    # Skip if already in DB or already seen in this genre.
-                    if vid in existing_ids or vid in genre_seen:
+                    # Skip if already complete in DB or already seen in this genre.
+                    if vid in skip_ids or vid in genre_seen:
                         continue
 
                     genre_seen.add(vid)
@@ -201,7 +203,7 @@ def harvest_candidates(
                 if not next_page:
                     break
 
-        log.info(f"✅ {genre_id}: {genre_new} new candidates")
+        log.info(f"Harvested {genre_new} candidates for genre: {genre_id}")
 
     return candidates
 
@@ -288,27 +290,38 @@ def run_pipeline() -> None:
     sb = _supabase_client()
     r2 = _r2_client()
 
-    # Prefetch existing IDs so we never waste time processing duplicates.
+    # Prefetch existing rows so we can skip complete songs and repair incomplete ones.
     PAGE = 1000
     offset = 0
-    existing_ids: Set[str] = set()
+    existing_by_id: Dict[str, Dict[str, Any]] = {}
+    complete_ids: Set[str] = set()
     while True:
         batch = (
             sb.table("songs")
-            .select("id")
+            .select("id,BPM,audio_url")
             .range(offset, offset + PAGE - 1)
             .execute()
         ).data or []
         for row in batch:
-            if row.get("id"):
-                existing_ids.add(str(row["id"]))
+            if not row.get("id"):
+                continue
+            vid = str(row["id"])
+            existing_by_id[vid] = {
+                "BPM": row.get("BPM"),
+                "audio_url": row.get("audio_url"),
+            }
+            if not _is_blank(row.get("BPM")) and not _is_blank(row.get("audio_url")):
+                complete_ids.add(vid)
         if len(batch) < PAGE:
             break
         offset += PAGE
-    log.info(f"Loaded {len(existing_ids)} existing song IDs from Supabase")
+    log.info(
+        f"Loaded {len(existing_by_id)} existing songs from Supabase "
+        f"({len(complete_ids)} complete, {len(existing_by_id) - len(complete_ids)} incomplete)"
+    )
 
     config = _load_harvest_config()
-    candidates = harvest_candidates(config, existing_ids)
+    candidates = harvest_candidates(config, complete_ids)
     log.info(f"Total new candidates to process: {len(candidates)}")
 
     totals = {"ok": 0, "err": 0, "skipped_existing": 0}
@@ -320,37 +333,71 @@ def run_pipeline() -> None:
             channel = cand.get("channel") or ""
             genre = cand.get("genre") or "unknown"
 
-            if vid in existing_ids:
+            if vid in complete_ids:
                 totals["skipped_existing"] += 1
                 continue
 
-            log.info(f"[{vid}] {title[:60]}  (new)")
+            existed = vid in existing_by_id
+            if existed:
+                prev = existing_by_id.get(vid) or {}
+                missing_bpm = _is_blank(prev.get("BPM"))
+                missing_audio = _is_blank(prev.get("audio_url"))
+                log.info(
+                    f"[{vid}] {title[:60]}  (repair: "
+                    f"{'BPM ' if missing_bpm else ''}"
+                    f"{'audio_url' if missing_audio else ''}".rstrip()
+                    + ")"
+                )
+            else:
+                missing_bpm = True
+                missing_audio = True
+                log.info(f"[{vid}] {title[:60]}  (new)")
 
             try:
-                # For brand-new IDs: always do full pipeline (download -> BPM -> upload)
-                log.info(f"  [{vid}]   downloading audio...")
-                file_path = download_audio(vid, tmp_dir)
-
-                bpm = calc_bpm(file_path)
-                log.info(f"  [{vid}]   BPM: {bpm}")
-
-                log.info(f"  [{vid}]   uploading to R2...")
-                audio_url = upload_audio(r2, genre, vid, file_path)
-
-                payload = {
+                # New or incomplete IDs: do only the work that's still missing.
+                payload: Dict[str, Any] = {
                     "id": vid,
                     "title": title,
                     "channel": channel,
                     "genre": genre,
-                    "BPM": bpm,
-                    "audio_url": audio_url,
                 }
+
+                if missing_bpm or missing_audio:
+                    log.info(f"  [{vid}]   downloading audio...")
+                    file_path = download_audio(vid, tmp_dir)
+
+                    if missing_bpm:
+                        bpm = calc_bpm(file_path)
+                        payload["BPM"] = bpm
+                        log.debug(f"  [{vid}]   BPM: {bpm}")
+
+                    if missing_audio:
+                        log.info(f"  [{vid}]   uploading to R2...")
+                        audio_url = upload_audio(r2, genre, vid, file_path)
+                        payload["audio_url"] = audio_url
 
                 # Write to Supabase only after successful processing.
                 sb.table("songs").upsert(payload).execute()
-                existing_ids.add(vid)
+                existing_by_id[vid] = {
+                    "BPM": payload.get("BPM", existing_by_id.get(vid, {}).get("BPM")),
+                    "audio_url": payload.get(
+                        "audio_url", existing_by_id.get(vid, {}).get("audio_url")
+                    ),
+                }
+                if (
+                    not _is_blank(existing_by_id[vid].get("BPM"))
+                    and not _is_blank(existing_by_id[vid].get("audio_url"))
+                ):
+                    complete_ids.add(vid)
                 totals["ok"] += 1
-                log.info(f"  [{vid}] ✅  {bpm} BPM — {audio_url}")
+                if "BPM" in payload and "audio_url" in payload:
+                    log.info(f"  [{vid}] ✅  {payload['BPM']} BPM — {payload['audio_url']}")
+                elif "BPM" in payload:
+                    log.info(f"  [{vid}] ✅  {payload['BPM']} BPM")
+                elif "audio_url" in payload:
+                    log.info(f"  [{vid}] ✅  {payload['audio_url']}")
+                else:
+                    log.info(f"  [{vid}] ✅")
 
             except Exception as exc:
                 log.error(f"  [{vid}] ❌  {exc}")
