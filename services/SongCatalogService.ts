@@ -5,8 +5,8 @@ export interface CatalogSong {
   title: string;
   channel: string;
   genre: string;
-  BPM: number | null;
-  audio_url: string | null;
+  BPM: number;
+  audio_url: string;
 }
 
 export interface CatalogFilter {
@@ -26,17 +26,17 @@ export interface CatalogFilter {
   limit?: number;
 }
 
-function hasBpm(song: CatalogSong): song is CatalogSong & { bpm: number } {
+function hasBpm(song: CatalogSong): song is CatalogSong & { BPM: number } {
   return song.BPM !== null;
 }
 
-function lowerBound(songs: readonly (CatalogSong & { bpm: number })[], bpm: number): number {
+function lowerBound(songs: readonly (CatalogSong & { BPM: number })[], bpm: number): number {
   let low = 0;
   let high = songs.length;
 
   while (low < high) {
     const mid = Math.floor((low + high) / 2);
-    if (songs[mid].bpm < bpm) {
+    if (songs[mid].BPM < bpm) {
       low = mid + 1;
     } else {
       high = mid;
@@ -47,7 +47,6 @@ function lowerBound(songs: readonly (CatalogSong & { bpm: number })[], bpm: numb
 }
 
 function createCatalog(songs: CatalogSong[]) {
-  console.log(`[SongCatalogService] [createCatalog] songs input  ${songs.length}`);
   const allSongs: CatalogSong[] = [];
   const songsById = new Map<string, CatalogSong>();
   const songsByGenre = new Map<string, CatalogSong[]>();
@@ -61,16 +60,16 @@ function createCatalog(songs: CatalogSong[]) {
     songsByGenre.set(song.genre, genreSongs);
   }
 
-  const songsByGenreSortedByBpm = new Map<string, (CatalogSong & { bpm: number })[]>();
+  const songsByGenreSortedByBpm = new Map<string, (CatalogSong & { BPM: number })[]>();
 
   for (const [genre, songs] of songsByGenre.entries()) {
     songsByGenreSortedByBpm.set(
       genre,
-      songs.filter(hasBpm).sort((a, b) => a.bpm - b.bpm),
+      songs.filter(hasBpm).sort((a, b) => a.BPM - b.BPM),
     );
   }
 
-  const allSongsSortedByBpm = allSongs.filter(hasBpm).sort((a, b) => a.bpm - b.bpm);
+  const allSongsSortedByBpm = allSongs.filter(hasBpm).sort((a, b) => a.BPM - b.BPM);
 
   return {
     allSongs,
@@ -81,7 +80,7 @@ function createCatalog(songs: CatalogSong[]) {
   };
 }
 
-function sliceByBpm(songs: readonly (CatalogSong & { bpm: number })[], minBpm: number, maxBpm: number) {
+function sliceByBpm(songs: readonly (CatalogSong & { BPM: number })[], minBpm: number, maxBpm: number) {
   const start = lowerBound(songs, minBpm);
   const end = lowerBound(songs, maxBpm + Number.EPSILON);
   return songs.slice(start, end);
@@ -177,7 +176,7 @@ class SongCatalogService {
     return res;
   }
 
-  private find_song(bpm: number, excludeIds: string[], songs: (CatalogSong & { bpm: number })[]): CatalogSong | null {
+  private find_song(bpm: number, excludeIds: string[], songs: (CatalogSong & { BPM: number })[]): CatalogSong | null {
     let index_of_bpm = lowerBound(songs, bpm) - 1;
     let start_from = index_of_bpm < 0 ? 0 : Math.min(index_of_bpm, songs.length - 1);
     // now index_of_bpm is the relevant bpm or the closest
@@ -200,6 +199,10 @@ class SongCatalogService {
       const { data, error } = await supabase
         .from("songs")
         .select()
+        .not("BPM", "is", null)
+        .not("audio_url", "is", null)
+        .neq("audio_url", "")
+        .neq("genre", "ambient")
         .range(from, from + PAGE_SIZE - 1);
 
       if (error) {
@@ -223,11 +226,6 @@ class SongCatalogService {
     }));
 
     this.catalog = createCatalog(songs);
-    console.log(
-      `[SongCatalogService] Catalog initialized: ${songs.length} total songs, ` +
-        `${this.catalog.songsByGenre.size} genres (${[...this.catalog.songsByGenre.keys()].join(", ")}), ` +
-        `${this.catalog.allSongsSortedByBpm.length} songs with BPM data.`,
-    );
   }
 }
 

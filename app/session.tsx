@@ -31,7 +31,10 @@ export default function SessionScreen() {
 
   // Start the music session on mount
   useEffect(() => {
+    console.warn("[SessionScreen] [startSession]", startHeartRate, profile?.preferredGenres);
+
     musicService.startSession(startHeartRate, profile?.preferredGenres ?? []);
+
     return () => {
       // Clean up if user navigates away without ending session
       musicService.endSession();

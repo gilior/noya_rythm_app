@@ -51,21 +51,67 @@ class MusicService {
     this.playingFallCount = 0;
 
     // Initial sync: select a song at 95%–100% of HR — never faster than the user's heart (spec Step 1)
-    songCatalogService.findNearestLowBPMSong(this.getRandomGenre(), initialHeartRate, this.recentlyPlayedIds);
 
-    // Short artificial sync pause so the UI can show the syncing state
-    await delay(2_000);
+    const song = songCatalogService.findNearestLowBPMSong(
+      this.getRandomGenre(),
+      initialHeartRate,
+      this.recentlyPlayedIds,
+    );
+    if (!song) {
+      return;
+    } else {
+      await this.postLoadSong(song);
+    }
+    this.startSyncSongFlow();
+  }
 
+  async postLoadSong(song: CatalogSong): Promise<void> {
+    await this.stopSong();
+
+    this.currentRate = 1.0;
+    this.originSongBPM = song.BPM ?? this.originSongBPM;
+    // Track recently played IDs to avoid immediate repeats (spec requirement)
+    this.recentlyPlayedIds = [song.id, ...this.recentlyPlayedIds].slice(0, 3);
+    // const inRange = bpmRange ? song.BPM !== null && song.BPM >= bpmRange.minBpm && song.BPM <= bpmRange.maxBpm : true;
+    // Guard: if session ended while this async load was in-flight, discard the result
+    if (this.state.phase === "idle" || this.state.phase === "completed") return;
+    // When a fallback is out of range, track currentSongBPM at target so drift
+    // calculation on the next HR reading doesn't immediately trigger another load.
     this.setState({
       ...this.state,
-      phase: "playing",
-      isPlaying: true,
-      message: "Your heart and music are now in sync",
+      currentSong: { title: song.title, bpm: song.BPM },
+      currentSongBPM: song.BPM,
     });
 
-    this.sound?.playAsync().catch(() => null);
+    await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
 
-    this.startSyncSongFlow();
+    const { sound } = await Audio.Sound.createAsync(
+      { uri: song.audio_url },
+      { isLooping: true, shouldPlay: this.state.isPlaying },
+    );
+    this.sound = sound;
+
+    if (this.state.phase === "syncing") {
+      this.setState({
+        ...this.state,
+        message: "Your heart and music are now in sync",
+      });
+      this.isLoadingLoop = false;
+
+      // Short artificial sync pause so the UI can show the syncing state
+      await delay(2_000);
+
+      this.setState({
+        ...this.state,
+        phase: "playing",
+        isPlaying: true,
+        message: "Your heart and music are now in sync",
+      });
+    } else {
+      this.setState({ ...this.state, isPlaying: true });
+    }
+
+    this.sound?.playAsync().catch(() => null);
   }
 
   updateSongBpmPerNewHeartRate(heartRate: number): void {
@@ -104,7 +150,7 @@ class MusicService {
     });
   }
 
-  continuePlaying(normalHeartRate: number): void {
+  async continuePlaying(normalHeartRate: number): Promise<void> {
     // After completion, play calming music at max = min(normalHeartRate, 80) per spec Step 4.
     // The adapt interval is intentionally NOT started here — the tempo is fixed at the cap
     // and should not be driven by the continuing HR readings.
@@ -120,7 +166,12 @@ class MusicService {
 
     this.sound?.playAsync().catch(() => null);
     // this.loadSong(targetSongBPM, { minBpm: 50, maxBpm: targetSongBPM }, "post-completion-calming").catch(() => null);
-    songCatalogService.findNearestLowBPMSong(this.getRandomGenre(), targetSongBPM, this.recentlyPlayedIds);
+    const song = songCatalogService.findNearestLowBPMSong(this.getRandomGenre(), targetSongBPM, this.recentlyPlayedIds);
+    if (!song) {
+      return;
+    } else {
+      await this.postLoadSong(song);
+    }
   }
 
   /** Returns session summary and resets internal state */
@@ -154,18 +205,20 @@ class MusicService {
     this.setState({ ...this.state, isPlaying });
   }
 
-  skipLoop(): void {
+  async skipLoop(): Promise<void> {
     if (this.state.phase === "idle" || this.state.phase === "completed") return;
     this.setState({ ...this.state, message: "Loading next track…" });
     const hr = this.state.currentHeartRate || this.state.startHeartRate;
     // Use sync range during the initial playing phase, slow-down range once we're slowing
-    const bpmRange =
-      this.state.phase === "playing"
-        ? { minBpm: Math.ceil(hr * 0.95), maxBpm: hr }
-        : { minBpm: Math.ceil(hr * 0.9), maxBpm: Math.floor(hr * 0.95) };
+
     const bpm = Math.floor(hr * 0.95);
     // this.loadSong(this.state.currentSongBPM, bpmRange, "user-skip").catch(() => null);
-    songCatalogService.findNearestLowBPMSong(this.getRandomGenre(), bpm, this.recentlyPlayedIds);
+    const song = songCatalogService.findNearestLowBPMSong(this.getRandomGenre(), bpm, this.recentlyPlayedIds);
+    if (!song) {
+      return;
+    } else {
+      await this.postLoadSong(song);
+    }
   }
 
   onStateChange(cb: StateChangeCallback): () => void {
@@ -222,7 +275,7 @@ class MusicService {
    * - Case B (HR change ≥5%): load a new song at 95%–100% of updated HR.
    * - Case A (minor drift): stretch current song's playback speed.
    */
-  private adaptSyncPhaseSong(heartRate: number, hrChange: number): void {
+  private async adaptSyncPhaseSong(heartRate: number, hrChange: number) {
     const minBpm = Math.ceil(heartRate * 0.95);
     const maxBpm = heartRate;
     const targetBpm = Math.round((minBpm + maxBpm) / 2);
@@ -234,15 +287,20 @@ class MusicService {
       //   { minBpm, maxBpm },
       //   `sync-phase-major-hr-change (hrChange: ${(hrChange * 100).toFixed(1)}%, HR: $heartRate})`,
       // ); // fire-and-forget
-      songCatalogService.findNearestLowBPMSong(this.getRandomGenre(), targetBpm, this.recentlyPlayedIds);
+      const song = songCatalogService.findNearestLowBPMSong(this.getRandomGenre(), targetBpm, this.recentlyPlayedIds);
+      if (!song) {
+        return;
+      } else {
+        await this.postLoadSong(song);
+      }
       return;
     }
 
     const effectiveBpm = this.state.currentSongBPM > 0 ? this.state.currentSongBPM : this.originSongBPM;
     const songDrift = effectiveBpm > 0 ? Math.abs(targetBpm - effectiveBpm) / effectiveBpm : 1;
     if (songDrift >= MINOR_CHANGE_THRESHOLD) {
-      this.adjustBPM(targetBpm);
-      this.setState({ ...this.state, currentSongBPM: targetBpm });
+      const actualSongBPM = this.adjustBPM(targetBpm);
+      this.setState({ ...this.state, currentSongBPM: actualSongBPM });
     }
   }
 
@@ -250,7 +308,7 @@ class MusicService {
    * Detects transition from sync phase to slow-down phase.
    * Requires 2 consecutive falling HR readings to avoid reacting to noise.
    */
-  private checkSyncToSlowTransition(heartRate: number, prevHeartRate: number): void {
+  private async checkSyncToSlowTransition(heartRate: number, prevHeartRate: number) {
     if (heartRate >= prevHeartRate) {
       this.playingFallCount = 0;
       return;
@@ -262,6 +320,9 @@ class MusicService {
     this.playingFallCount = 0;
     const minBpm = Math.ceil(heartRate * 0.9);
     const maxBpm = Math.floor(heartRate * 0.95);
+    console.log(
+      `[SlowPhase] Transition triggered — HR: ${heartRate}, prev: ${prevHeartRate}, target BPM range: ${minBpm}–${maxBpm}`,
+    );
     this.setState({
       ...this.state,
       phase: "slowing",
@@ -272,11 +333,16 @@ class MusicService {
     //   { minBpm, maxBpm },
     //   `transition-to-slow-phase (HR: ${heartRate}, prev: ${prevHeartRate})`,
     // ); // fire-and-forget
-    songCatalogService.findNearestLowBPMSong(
+    const song = songCatalogService.findNearestLowBPMSong(
       this.getRandomGenre(),
       Math.round((minBpm + maxBpm) / 2),
       this.recentlyPlayedIds,
     );
+    if (!song) {
+      return;
+    } else {
+      await this.postLoadSong(song);
+    }
   }
 
   /**
@@ -284,13 +350,16 @@ class MusicService {
    * - Case B (HR change ≥5%): load a new song at the lower range.
    * - Case A (minor change): handled by the 2-min adapt interval.
    */
-  private handleSlowDownPhase(
+  private async handleSlowDownPhase(
     heartRate: number,
     peakHeartRate: number,
     hrChange: number,
     milestonesReached: number,
     message: string,
-  ): void {
+  ) {
+    console.log(
+      `[SlowPhase] HR update — HR: ${heartRate}, change: ${(hrChange * 100).toFixed(1)}%, songBPM: ${this.state.currentSongBPM}`,
+    );
     this.setState({
       ...this.state,
       phase: "slowing",
@@ -304,6 +373,9 @@ class MusicService {
     if (hrChange >= MINOR_CHANGE_THRESHOLD) {
       const minBpm = Math.ceil(heartRate * 0.9);
       const maxBpm = Math.floor(heartRate * 0.95);
+      console.log(
+        `[SlowPhase] Major HR change (${(hrChange * 100).toFixed(1)}%) — loading new song, target BPM range: ${minBpm}–${maxBpm}`,
+      );
       this.setState({ ...this.state, message: "Adapting music to your new rhythm…" });
       // this.loadSong(
       //   Math.round((minBpm + maxBpm) / 2),
@@ -311,11 +383,15 @@ class MusicService {
       //   `slow-phase-major-hr-change (hrChange: ${(hrChange * 100).toFixed(1)}%, HR: ${heartRate})`,
       // ); // fire-and-forget
 
-      songCatalogService.findNearestLowBPMSong(
-        this.getRandomGenre(),
-        Math.floor(heartRate * 0.95),
-        this.recentlyPlayedIds,
-      );
+      const targetBpm = Math.round((Math.ceil(heartRate * 0.9) + Math.floor(heartRate * 0.95)) / 2);
+      const song = songCatalogService.findNearestLowBPMSong(this.getRandomGenre(), targetBpm, this.recentlyPlayedIds);
+      if (!song) {
+        console.log(`[SlowPhase] No song found for target BPM: ${targetBpm}`);
+        return;
+      } else {
+        console.log(`[SlowPhase] Loading song: "${song.title}" (${song.BPM} BPM)`);
+        await this.postLoadSong(song);
+      }
     }
     // Case A: minor change nudged by the adapt interval via adjustBPM
   }
@@ -373,6 +449,11 @@ class MusicService {
           this.state.phase === "playing"
             ? Math.min(targetSongBPM, this.state.currentSongBPM + 2) // can nudge up or hold during sync
             : Math.max(targetSongBPM, this.state.currentSongBPM - 2); // only nudge down during slow-down
+        if (this.state.phase === "slowing") {
+          console.log(
+            `[SlowPhase] Interval nudge — songBPM: ${this.state.currentSongBPM} → ${nudgedSongBPM} (target: ${targetSongBPM})`,
+          );
+        }
         const actualSongBPM = this.adjustBPM(nudgedSongBPM);
         this.setState({ ...this.state, currentSongBPM: actualSongBPM });
       }
@@ -391,11 +472,6 @@ class MusicService {
     bpmRange?: { minBpm: number; maxBpm: number },
     reason = "unknown",
   ): Promise<void> {
-    console.log(
-      `[MusicService] loadSong — reason: "${reason}" | targetBPM: ${targetSongBPM}` +
-        (bpmRange ? ` | range: [${bpmRange.minBpm}–${bpmRange.maxBpm}]` : "") +
-        ` | phase: ${this.state.phase} | currentHR: ${this.state.currentHeartRate} | currentSongBPM: ${this.state.currentSongBPM}`,
-    );
     // Pick a random preferred genre for this load; undefined means search all genres.
     const genre =
       this.preferredGenres.length > 0
@@ -442,7 +518,6 @@ class MusicService {
             songCatalogService.pickRandomSong())) || null;
 
       if (!song) {
-        console.warn("No matching song found for BPM:", targetSongBPM);
         return;
       }
 
@@ -462,7 +537,6 @@ class MusicService {
       });
 
       if (!song.audio_url) {
-        console.warn("MusicService: song has no audioUrl, skipping:", song.id);
         return;
       }
 
@@ -480,8 +554,7 @@ class MusicService {
           message: "Your heart and music are now in sync",
         });
       }
-    } catch (e) {
-      console.warn("MusicService: failed to load audio", e);
+    } catch {
     } finally {
       this.isLoadingLoop = false;
     }
